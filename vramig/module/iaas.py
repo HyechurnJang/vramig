@@ -20,8 +20,16 @@ class CloudAccount(VRAOBJ):
         VRAOBJ.__init__(self, vra)
     
     def dump(self):
-        data = self.get('/iaas/api/cloud-accounts')['content']
-        self.data2file(data)
+        self.data2file(self.get('/iaas/api/cloud-accounts?$limit=10000'))
+
+@register_object
+class CloudRegion(VRAOBJ):
+    
+    def __init__(self, vra):
+        VRAOBJ.__init__(self, vra)
+    
+    def dump(self):
+        self.data2file(self.get('/iaas/api/regions?$limit=10000'))
 
 @register_object
 class CloudZone(VRAOBJ):
@@ -30,32 +38,38 @@ class CloudZone(VRAOBJ):
         VRAOBJ.__init__(self, vra)
      
     def dump(self):
-        data = self.get('/iaas/api/zones')['content']
-        self.data2file(data)
+        self.data2file(self.get('/iaas/api/zones?$limit=10000'))
     
     def sync(self):
-        data = self.file2data()
-        zones = self.get('/iaas/api/zones')['content']
-        regions = self.get('/iaas/api/regions')['content']
-        for content in data:
-            is_zone = False
-            for zone in zones:
-                if zone['name'] == content['name']: break
+        srcs = self.file2data()
+        tgts = self.get('/iaas/api/zones?$limit=10000')['content']
+        src_ca = self.getCAFromFile()
+        tgt_ca = self.getCAFromRest()
+        regions = self.get('/iaas/api/regions?$limit=10000')['content']
+        for src in srcs:
+            for tgt in tgts:
+                if src['name'] == tgt['name']: break
             else:
-                print('cloud zone {}'.format(content['name']))
+                regionId = None
                 for region in regions:
-                    if content['externalRegionId'] == region['externalRegionId']:
+                    if src_ca[self.getCAID(src)] == tgt_ca[self.getCAID(region)] and src['externalRegionId'] == region['externalRegionId']:
                         regionId = region['id']
                         break
-                else: raise Exception('could not find region')
-                d = {'name': content['name'], 'regionId': regionId}
-                if 'customProperties' in content: d['customProperties'] = content['customProperties']
-                if 'folder' in content: d['folder'] = content['folder']
-                if 'tagsToMatch' in content: d['tagsToMatch'] = content['tagsToMatch']
-                if 'description' in content: d['description'] = content['description']
-                if 'placementPolicy' in content: d['placementPolicy'] = content['placementPolicy']
-                if 'tags' in content: d['tags'] = content['tags']
-                self.post('/iaas/api/zones', d)
+                else:
+                    print('ERROR: could not find region %s' % src['name'])
+                    continue
+                data = {'name': src['name'], 'regionId': regionId}
+                if 'customProperties' in src: data['customProperties'] = src['customProperties']
+                if 'folder' in src: data['folder'] = src['folder']
+                if 'tagsToMatch' in src: data['tagsToMatch'] = src['tagsToMatch']
+                if 'description' in src: data['description'] = src['description']
+                if 'placementPolicy' in src: data['placementPolicy'] = src['placementPolicy']
+                if 'tags' in src: data['tags'] = src['tags']
+                try:
+                    self.post('/iaas/api/zones', data)
+                    print('create cloud zone %s' % src['name'])
+                except: print('ERROR: could not create cloud zone %s' % src['name'])
+                
 
 @register_object
 class FabricCompute(VRAOBJ):
@@ -64,24 +78,23 @@ class FabricCompute(VRAOBJ):
         VRAOBJ.__init__(self, vra)
     
     def dump(self):
-        data = self.get('/iaas/api/fabric-computes')['content']
-        self.data2file(data)
+        self.data2file(self.get('/iaas/api/fabric-computes?$limit=10000'))
     
-    def sync(self):
-        data = self.file2data()
-        computes = self.get('/iaas/api/fabric-computes')['content']
-        for content in data:
-            if 'tags' in content and content['tags']:
-                print('fabric compute {}'.format(content['name']))
-                externalRegionId = content['externalRegionId']
-                externalId = content['externalId']
-                for obj in computes:
-                    if obj['externalRegionId'] == externalRegionId and obj['externalId'] == externalId:
-                        self.patch('/iaas/api/fabric-computes/' + obj['id'], {
-                            'tags': content['tags']
-                        })
-                        break
-                else: raise Exception('could not find fabric compute')
+#     def sync(self):
+#         data = self.file2data()
+#         computes = self.get('/iaas/api/fabric-computes')['content']
+#         for content in data:
+#             if 'tags' in content and content['tags']:
+#                 print('fabric compute {}'.format(content['name']))
+#                 externalRegionId = content['externalRegionId']
+#                 externalId = content['externalId']
+#                 for obj in computes:
+#                     if obj['externalRegionId'] == externalRegionId and obj['externalId'] == externalId:
+#                         self.patch('/iaas/api/fabric-computes/' + obj['id'], {
+#                             'tags': content['tags']
+#                         })
+#                         break
+#                 else: raise Exception('could not find fabric compute')
 
 @register_object
 class FabricNetwork(VRAOBJ):
@@ -90,38 +103,25 @@ class FabricNetwork(VRAOBJ):
         VRAOBJ.__init__(self, vra)
     
     def dump(self):
-        data = self.get('/iaas/api/fabric-networks')['content']
-        self.data2file(data)
+        self.data2file(self.get('/iaas/api/fabric-networks?$limit=10000'))
     
     def sync(self):
-        data = self.file2data()
-        networks = self.get('/iaas/api/fabric-networks')['content']
-        for content in data:
-            if 'tags' in content and content['tags']:
-                print('fabric network {}'.format(content['name']))
-                if 'externalRegionId' in content: # Compute Network
-                    externalRegionId = content['externalRegionId']
-                    externalId = content['externalId']
-                    for obj in networks:
-                        if obj['externalId'] == externalId:
-                            if 'externalRegionId' in obj and obj['externalRegionId'] == externalRegionId:
-                                self.patch('/iaas/api/fabric-networks/' + obj['id'], {
-                                    'tags': content['tags']
-                                })
-                                break
-                    else: raise Exception('could not find fabric network')
-                else: # NSX Network
-                    if 'path' in content['customProperties']:
-                        nsx_path = content['customProperties']['path']
-                        externalId = content['externalId']
-                        for obj in networks:
-                            if obj['externalId'] == externalId:
-                                if 'path' in obj['customProperties'] and obj['customProperties']['path'] == nsx_path:
-                                    self.patch('/iaas/api/fabric-networks/' + obj['id'], {
-                                        'tags': content['tags']
-                                    })
-                                    break
-                        else: raise Exception('could not find fabric network')
+        srcs = self.file2data()
+        tgts = self.get('/iaas/api/fabric-networks?$limit=10000')['content']
+        src_ca = self.getCAFromFile()
+        tgt_ca = self.getCAFromRest()
+        for src in srcs:
+            if 'tags' in src and src['tags']:
+                for tgt in tgts:
+                    if src['name'] == tgt['name'] and src_ca[self.getCAID(src)] == tgt_ca[self.getCAID(tgt)]:
+                        try:
+                            self.patch('/iaas/api/fabric-networks/' + tgt['id'], {
+                                'tags': src['tags']
+                            })
+                            print('set tags to fabric network %s' % src['name'])
+                        except: print('ERROR: could not set tags to fabric network %s' % src['name'])
+                        break
+                else: print('ERROR: could not find fabric network %s' % src['name'])
 
 @register_object
 class FabricNetworkvSphere(VRAOBJ):
@@ -130,46 +130,29 @@ class FabricNetworkvSphere(VRAOBJ):
         VRAOBJ.__init__(self, vra)
     
     def dump(self):
-        data = self.get('/iaas/api/fabric-networks-vsphere')['content']
-        self.data2file(data)
+        self.data2file(self.get('/iaas/api/fabric-networks-vsphere?$limit=10000'))
     
     def sync(self):
-        data = self.file2data()
-        networks = self.get('/iaas/api/fabric-networks-vsphere')['content']
-        for content in data:
-            if 'cidr' in content:
-                print('fabric network vsphere {}'.format(content['name']))
-                if 'externalRegionId' in content: # Compute Network
-                    externalRegionId = content['externalRegionId']
-                    externalId = content['externalId']
-                    for obj in networks:
-                        if obj['externalId'] == externalId:
-                            if 'externalRegionId' in obj and obj['externalRegionId'] == externalRegionId:
-                                d = {'cidr': content['cidr']}
-                                if 'domain' in content: d['domain'] = content['domain']
-                                if 'defaultGateway' in content: d['defaultGateway'] = content['defaultGateway']
-                                if 'dnsServerAddresses' in content: d['dnsServerAddresses'] = content['dnsServerAddresses']
-                                if 'dnsSearchDomains' in content: d['dnsSearchDomains'] = content['dnsSearchDomains']
-                                if 'isDefault' in content: d['isDefault'] = content['isDefault']
-                                self.patch('/iaas/api/fabric-networks-vsphere/' + obj['id'], d)
-                                break
-                    else: raise Exception('could not find fabric network vsphere')
-                else: # NSX Network
-                    if '__path' in content['customProperties']:
-                        nsx_path = content['customProperties']['__path']
-                        externalId = content['externalId']
-                        for obj in networks:
-                            if obj['externalId'] == externalId:
-                                if '__path' in obj['customProperties'] and obj['customProperties']['__path'] == nsx_path:
-                                    d = {'cidr': content['cidr']}
-                                    if 'domain' in content: d['domain'] = content['domain']
-                                    if 'defaultGateway' in content: d['defaultGateway'] = content['defaultGateway']
-                                    if 'dnsServerAddresses' in content: d['dnsServerAddresses'] = content['dnsServerAddresses']
-                                    if 'dnsSearchDomains' in content: d['dnsSearchDomains'] = content['dnsSearchDomains']
-                                    if 'isDefault' in content: d['isDefault'] = content['isDefault']
-                                    self.patch('/iaas/api/fabric-networks-vsphere/' + obj['id'], d)
-                                    break
-                        else: raise Exception('could not find fabric network vcsphere')
+        srcs = self.file2data()
+        tgts = self.get('/iaas/api/fabric-networks-vsphere?$limit=10000')['content']
+        src_ca = self.getCAFromFile()
+        tgt_ca = self.getCAFromRest()
+        for src in srcs:
+            if 'tags' in src and src['tags']:
+                for tgt in tgts:
+                    if src['name'] == tgt['name'] and src_ca[self.getCAID(src)] == tgt_ca[self.getCAID(tgt)]:
+                        data = {'cidr': src['cidr']}
+                        if 'domain' in src: data['domain'] = src['domain']
+                        if 'defaultGateway' in src: data['defaultGateway'] = src['defaultGateway']
+                        if 'dnsServerAddresses' in src: data['dnsServerAddresses'] = src['dnsServerAddresses']
+                        if 'dnsSearchDomains' in src: data['dnsSearchDomains'] = src['dnsSearchDomains']
+                        if 'isDefault' in src: data['isDefault'] = src['isDefault']
+                        try:
+                            self.patch('/iaas/api/fabric-networks-vsphere/' + tgt['id'], data)
+                            print('set cidr to fabric network %s' % src['name'])
+                        except: print('ERROR: could not set cidr to fabric network %s' % src['name'])
+                        break
+                else: print('ERROR: could not find fabric network %s' % src['name'])
 
 @register_object
 class IPRange(VRAOBJ):
@@ -178,138 +161,54 @@ class IPRange(VRAOBJ):
         VRAOBJ.__init__(self, vra)
     
     def dump(self):
-        data = self.get('/iaas/api/network-ip-ranges')['content']
-        self.data2file(data)
+        self.data2file(self.get('/iaas/api/network-ip-ranges?$limit=10000'))
     
     def sync(self):
-        data = self.file2data()
-        tgt_networks = self.get('/iaas/api/fabric-networks')['content']
-        src_networks = self.file2data('FabricNetwork')
-        for content in data:
-            if 'fabric-network' in content['_links'] and 'href' in content['_links']['fabric-network']:
-                fabric_network_id = content['_links']['fabric-network']['href'].split('fabric-networks/')[1]
-                externalRegionId = None
-                nsx_path = None
-                externalId = None
-                for network in src_networks:
-                    if network['id'] == fabric_network_id:
-                        if 'externalRegionId' in network:
-                            externalRegionId = network['externalRegionId']
-                            externalId = network['externalId']
-                            break
-                        elif 'path' in network['customProperties']:
-                            nsx_path = network['customProperties']['path']
-                            externalId = network['externalId']
-                            break
-                        break
-                else: raise Exception('could not find fabric network')
-                for network in tgt_networks:
-                    if externalId == network['externalId']:
-                        if externalRegionId and 'externalRegionId' in network and externalRegionId == network['externalRegionId']:
-                            fabric_network_id = network['id']
-                            break
-                        elif nsx_path and 'path' in network['customProperties'] and nsx_path == network['customProperties']['path']:
-                            fabric_network_id = network['id']
-                            break
-                else: raise Exception('could not find fabric network')
+        srcs = self.file2data()
+        tgts = self.get('/iaas/api/network-ip-ranges?$limit=10000')['content']
+        src_nets = self.file2data('FabricNetwork')
+        tgt_nets = self.get('/iaas/api/fabric-networks?$limit=10000')['content']
+        src_ca = self.getCAFromFile()
+        tgt_ca = self.getCAFromRest()
+        for src in srcs:
+            net_id = src['_links']['fabric-network']['href'].split('fabric-networks/')[1]
+            for net in src_nets:
+                if net['id'] == net_id:
+                    src_ca_name = src_ca[self.getCAID(net)]
+                    src_net_name = net['name']
+                    break
+            else:
+                print('ERROR: could not source network %s' % src['name'])
+                continue
+            for net in tgt_nets:
+                if net['name'] == src_net_name and tgt_ca[self.getCAID(net)] == src_ca_name:
+                    net_id = net['id']
+                    break
+            else:
+                print('ERROR: could not target network %s' % src['name'])
+                continue
+            full_net_id = '/iaas/api/fabric-networks/' + net_id
+            for tgt in tgts:
+                if src['name'] == tgt['name'] and tgt['_links']['fabric-network']['href'] == full_net_id:
+                    try:
+                        self.patch('/iaas/api/network-ip-ranges/' + tgt['id'], {
+                            'fabricNetworkId': net_id,
+                            'name': src['name'],
+                            'ipVersion': src['ipVersion'],
+                            'startIPAddress': src['startIPAddress'],
+                            'endIPAddress': src['endIPAddress']
+                        })
+                        print('set ip range %s' % src['name'])
+                    except: print('ERROR: could not set ip range %s' % src['name'])
+                    break
+            else:
                 try:
                     self.post('/iaas/api/network-ip-ranges', {
-                        'fabricNetworkId': fabric_network_id,
-                        'name': content['name'],
-                        'ipVersion': content['ipVersion'],
-                        'startIPAddress': content['startIPAddress'],
-                        'endIPAddress': content['endIPAddress']
+                        'fabricNetworkId': net_id,
+                        'name': src['name'],
+                        'ipVersion': src['ipVersion'],
+                        'startIPAddress': src['startIPAddress'],
+                        'endIPAddress': src['endIPAddress']
                     })
-                except: print('already set ip range {}'.format(content['name']))
-        
-    
-
-# @register_object
-# class NetworkProfile(VRAOBJ):
-#     
-#     def __init__(self, vra):
-#         VRAOBJ.__init__(self, vra)
-#     
-#     def dump(self):
-#         data = self.get('/iaas/api/network-profiles')['content']
-#         self.data2file(data)
-#     
-#     def sync(self):
-#         data = self.file2data()
-#         netprops = self.get('/iaas/api/network-profiles')['content']
-#         regions = self.get('/iaas/api/regions')['content']
-#         for content in data:
-#             externalRegionId = content['externalRegionId']
-#             name = content['name']
-#             for obj in netprops:
-#                 if externalRegionId == obj['externalRegionId'] and name == obj['name']: break
-#             else:
-#                 for region in regions:
-#                     if content['externalRegionId'] == region['externalRegionId']:
-#                         regionId = region['id']
-#                         break
-#                 else: raise Exception('could not find region')
-#                 d = {'name' : content['name'], 'regionId': regionId}
-#                 if 'description' in content: d['description'] = content['description']
-#                 if 'isolationType' in content: d['isolationType'] = content['isolationType']
-#                 if 'isolatedNetworkCIDRPrefix' in content: d['isolatedNetworkCIDRPrefix'] = content['isolatedNetworkCIDRPrefix']
-#                 if 'isolationNetworkDomainCIDR' in content: d['isolationNetworkDomainCIDR'] = content['isolationNetworkDomainCIDR']
-#                 if 'datacenterId' in content['customProperties']: d['customProperties'] = {'datacenterId' :content['isolationType']}
-#                 if 'isolationType' in content: d['isolationType'] = content['isolationType']
-#                 if 'isolationType' in content: d['isolationType'] = content['isolationType']
-#                 if 'isolationType' in content: d['isolationType'] = content['isolationType']
-#                 if 'isolationType' in content: d['isolationType'] = content['isolationType']
-#                 
-#                 d = {
-#                     "description": "string",
-#                     "isolationNetworkDomainCIDR": "10.10.10.0/24",
-#                     "isolationNetworkDomainId": "1234",
-#                     "tags": "[ { \"key\" : \"dev\", \"value\": \"hard\" } ]",
-#                     "externalIpBlockIds": "[\"3e2bb9bc-6a6a-11ea-bc55-0242ac130003\"]",
-#                     "fabricNetworkIds": "[ \"6543\" ]",
-#                     "customProperties": "{ \"resourcePoolId\" : \"resource-pool-1\", \"datastoreId\" : \"StoragePod:group-p87839\", \"computeCluster\" : \"/resources/compute/1234\", \"distributedLogicalRouterStateLink\" : \"/resources/routers/1234\", \"onDemandNetworkIPAssignmentType\" : \"dynamic\"}",
-#                     "regionId": "9e49",
-#                     "securityGroupIds": "[ \"6545\" ]",
-#                     "name": "string",
-#                     "isolationExternalFabricNetworkId": "1234",
-#                     "isolationType": "SUBNET",
-#                     "isolatedNetworkCIDRPrefix": 24,
-#                     "loadBalancerIds": "[ \"6545\" ]"
-#                 }
-                
-            
-                        
-                        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                    print('set ip range %s' % src['name'])
+                except: print('ERROR: could not set ip range %s' % src['name'])

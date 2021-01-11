@@ -86,8 +86,11 @@ class VRAOBJ:
     def delete(self, url): return self._vra.post(url)
     
     def data2file(self, data):
-        data = jps(data)
+        if 'numberOfElements' in data and 'totalElements' in data:
+            print('%-24s : %4d / %-4d' % (self.__class__.__name__, data['numberOfElements'], data['totalElements']), end='')
+        data = jps(data['content'])
         with open(self._file_name, 'w') as fd: fd.write(data)
+        print(' --> [ DUMP ]')
         if (self._vra._debug): print(data)
     
     def file2data(self, model=None):
@@ -95,6 +98,25 @@ class VRAOBJ:
             with open(model + '.json', 'r') as fd: return json.loads(fd.read())
         else:
             with open(self._file_name, 'r') as fd: return json.loads(fd.read())
+    
+    def getCAFromFile(self):
+        data = self.file2data('CloudAccount')
+        ca = {}
+        for d in data: ca[d['id']] = d['name']
+        return ca
+    
+    def getCAFromRest(self):
+        data = self.get('/iaas/api/cloud-accounts')['content']
+        ca = {}
+        for d in data: ca[d['id']] = d['name']
+        return ca
+    
+    def getCAID(self, data):
+        if 'cloudAccountId' in data: return data['cloudAccountId']
+        elif 'cloudAccountIds' in data:
+            if len(data['cloudAccountIds']) > 1: raise Exception('%s cloudAccountIds more 1' % data['name'])
+            return data['cloudAccountIds'][0]
+        raise Exception('%s does not have cloudAccountId' % data['name'])
     
     def dump(self): pass
     def sync(self): pass

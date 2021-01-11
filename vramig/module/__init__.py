@@ -40,9 +40,7 @@ def execute(args):
     if args.command == 'dump':
         for obj in objs:
             cls = REGISTERED_OBJECTS[obj]
-            print('%-24s' % obj, end='')
             cls(vra).dump()
-            print(' --> [ DUMP ]')
     elif args.command == 'sync':
         for obj in objs:
             cls = REGISTERED_OBJECTS[obj]
