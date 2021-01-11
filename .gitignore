@@ -130,3 +130,9 @@ dmypy.json
 /.project
 /.pydevproject
 /.settings
+/CloudAccount.json
+/CloudZone.json
+/FabricCompute.json
+/FabricNetwork.json
+/FabricNetworkvSphere.json
+/IPRange.json
