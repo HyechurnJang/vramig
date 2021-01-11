@@ -16,7 +16,7 @@ def execute(args):
     
     if args[0] == 'vramig': args = args[1:]
     if args == ['list']:
-        for cls_name in REGISTERED_OBJECTS.keys(): print(cls_name)
+        for obj in REGISTERED_OBJECTS.keys(): print(obj)
         exit(0)
     args = parser.parse_args(args)
     
@@ -29,7 +29,7 @@ def execute(args):
         exit(1)
     
     if args.all_objects:
-        objs = REGISTERED_OBJECTS.values()
+        objs = REGISTERED_OBJECTS.keys()
     elif args.task:
         objs = ['FabricCompute', 'CloudZone', 'FabricNetwork', 'FabricNetworkvSphere', 'IPRange']
     else:
@@ -40,7 +40,7 @@ def execute(args):
     if args.command == 'dump':
         for obj in objs:
             cls = REGISTERED_OBJECTS[obj]
-            print('%-24s' % cls_name, end='')
+            print('%-24s' % obj, end='')
             cls(vra).dump()
             print(' --> [ DUMP ]')
     elif args.command == 'sync':
