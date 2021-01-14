@@ -21,21 +21,23 @@ def jpp(obj): print(jps(obj))
 REGISTERED_OBJECTS = {}
 def register_object(cls):
     REGISTERED_OBJECTS[cls.__name__] = cls
+    return cls
 
 class VRA:
     
-    def __init__(self, hostname, username, password, debug=False):
-        self._hostname = hostname
+    def __init__(self, conf, role, debug=False):
         self._debug = debug
-        self._base_url = 'https://' + hostname
+        self._version = conf[role]['version']
+        self._hostname = conf[role]['hostname']
+        self._base_url = 'https://' + self._hostname
         self._session = requests.Session()
         self._headers = {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
         }
         res = self._session.post(self._base_url + '/csp/gateway/am/api/login?access_token', headers=self._headers, json={
-            'username': username,
-            'password': password
+            'username': conf[role]['username'],
+            'password': conf[role]['password']
         }, verify=False)
         res.raise_for_status()
         auth = res.json()
@@ -44,79 +46,98 @@ class VRA:
     
     def get(self, url):
         res = self._session.get(self._base_url + url)
+        if(self._debug): print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def getUerp(self, url):
         res = self._session.get(self._base_url + '/provisioning/uerp' + url)
+        if(self._debug): print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def post(self, url, data):
         res = self._session.post(self._base_url + url, json=data)
+        if(self._debug): print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def put(self, url, data):
         res = self._session.put(self._base_url + url, json=data)
+        if(self._debug): print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def patch(self, url, data):
         res = self._session.patch(self._base_url + url, json=data)
+        if(self._debug): print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def delete(self, url):
         res = self._session.delete(self._base_url + url)
+        if(self._debug): print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
 
 class VRAOBJ:
     
-    def __init__(self, vra):
-        self._vra = vra
-        self._file_name = self.__class__.__name__ + '.json'
+    def __init__(self, src_vra, tgt_vra):
+        self.role = None
+        self._vra = None
+        self._src_vra = src_vra
+        self._tgt_vra = tgt_vra
+        self._model = self.__class__.__name__
+    
+    def setSrc(self):
+        self.role = 'src'
+        self._vra = self._src_vra
+    
+    def setTgt(self):
+        self.role = 'tgt'
+        self._vra = self._tgt_vra
     
     def get(self, url): return self._vra.get(url)
     def getUerp(self, url): return self._vra.getUerp(url)
     def post(self, url, data): return self._vra.post(url, data)
     def put(self, url, data): return self._vra.put(url, data)
     def patch(self, url, data): return self._vra.patch(url, data)
-    def delete(self, url): return self._vra.post(url)
+    def delete(self, url): return self._vra.delete(url)
     
-    def data2file(self, data):
+    def printDataInfo(self, data):
         if 'numberOfElements' in data and 'totalElements' in data:
-            print('%-24s : %4d / %-4d' % (self.__class__.__name__, data['numberOfElements'], data['totalElements']), end='')
-        data = jps(data['content'])
-        with open(self._file_name, 'w') as fd: fd.write(data)
-        print(' --> [ DUMP ]')
-        if (self._vra._debug): print(data)
+            print('│ %s : %4d / %-4d' % (self.role, data['numberOfElements'], data['totalElements']))
+        elif 'totalCount' in data:
+            print('│ %s : %4d / %-4d' % (self.role, data['documentCount'], data['totalCount']))
     
-    def file2data(self, model=None):
-        if model != None:
-            with open(model + '.json', 'r') as fd: return json.loads(fd.read())
-        else:
-            with open(self._file_name, 'r') as fd: return json.loads(fd.read())
+    @classmethod
+    def write(cls, role, data):
+        with open(cls.__name__ + '.%s.json' % role, 'w') as fd: fd.write(jps(data))
     
-    def getCAFromFile(self):
-        data = self.file2data('CloudAccount')
-        ca = {}
-        for d in data: ca[d['id']] = d['name']
-        return ca
+    @classmethod
+    def read(cls, role):
+        with open(cls.__name__ + '.%s.json' % role, 'r') as fd: return json.loads(fd.read())
     
-    def getCAFromRest(self):
-        data = self.get('/iaas/api/cloud-accounts')['content']
-        ca = {}
-        for d in data: ca[d['id']] = d['name']
-        return ca
+    def dump(self):
+        self.setSrc()
+        if self._vra._version == '8.0': self.dump_80()
+        elif self._vra._version == '8.1': self.dump_81()
+        elif self._vra._version == '8.2': self.dump_82()
+        self.setTgt()
+        if self._vra._version == '8.0': self.dump_80()
+        elif self._vra._version == '8.1': self.dump_81()
+        elif self._vra._version == '8.2': self.dump_82()
+        
+    def dump_80(self): pass
+    def dump_81(self): pass
+    def dump_82(self): pass
     
-    def getCAID(self, data):
-        if 'cloudAccountId' in data: return data['cloudAccountId']
-        elif 'cloudAccountIds' in data:
-            if len(data['cloudAccountIds']) > 1: raise Exception('%s cloudAccountIds more 1' % data['name'])
-            return data['cloudAccountIds'][0]
-        raise Exception('%s does not have cloudAccountId' % data['name'])
-    
-    def dump(self): pass
-    def sync(self): pass
+    def sync(self):
+        self.setTgt()
+        if self._vra._version == '8.0': self.sync_80()
+        elif self._vra._version == '8.1': self.sync_81()
+        elif self._vra._version == '8.2': self.sync_82()
+        
+    def sync_80(self): pass
+    def sync_81(self): pass
+    def sync_82(self): pass

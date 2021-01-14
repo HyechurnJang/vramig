@@ -12,5 +12,19 @@ Created on 2021. 1. 11..
 
 import sys
 import module
+from config import SRC_VRA_HOSTNAME, SRC_VRA_USERNAME, SRC_VRA_PASSWORD, SRC_VRA_VERSION, TGT_VRA_HOSTNAME, TGT_VRA_USERNAME, TGT_VRA_PASSWORD, TGT_VRA_VERSION
 
-module.execute(sys.argv)
+module.execute(sys.argv, {
+    'src': {
+        'hostname': SRC_VRA_HOSTNAME,
+        'username': SRC_VRA_USERNAME,
+        'password': SRC_VRA_PASSWORD,
+        'version': SRC_VRA_VERSION
+    },
+    'tgt': {
+        'hostname': TGT_VRA_HOSTNAME,
+        'username': TGT_VRA_USERNAME,
+        'password': TGT_VRA_PASSWORD,
+        'version': TGT_VRA_VERSION
+    }
+})
