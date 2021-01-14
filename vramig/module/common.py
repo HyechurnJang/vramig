@@ -23,12 +23,11 @@ def register_object(cls):
     REGISTERED_OBJECTS[cls.__name__] = cls
     return cls
 
-class VRA:
+class VRASession:
     
-    def __init__(self, conf, role, debug=False):
+    def __init__(self, hostname, username, password, debug=False):
         self._debug = debug
-        self._version = conf[role]['version']
-        self._hostname = conf[role]['hostname']
+        self._hostname = hostname
         self._base_url = 'https://' + self._hostname
         self._session = requests.Session()
         self._headers = {
@@ -36,8 +35,8 @@ class VRA:
             'Content-Type': 'application/json'
         }
         res = self._session.post(self._base_url + '/csp/gateway/am/api/login?access_token', headers=self._headers, json={
-            'username': conf[role]['username'],
-            'password': conf[role]['password']
+            'username': username,
+            'password': password
         }, verify=False)
         res.raise_for_status()
         auth = res.json()
@@ -79,6 +78,12 @@ class VRA:
         if(self._debug): print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
+
+class VRA(VRASession):
+    
+    def __init__(self, conf, role, debug=False):
+        VRASession.__init__(self, conf[role]['hostname'], conf[role]['username'], conf[role]['password'], debug)
+        self._version = conf[role]['version']
 
 class VRAOBJ:
     
