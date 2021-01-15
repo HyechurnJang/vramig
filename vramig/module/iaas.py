@@ -63,13 +63,18 @@ class CloudZone(VRAOBJ):
     def _dump(self):
         data = self.get('/iaas/api/zones?$limit=10000')
         self.printDataInfo(data)
+        ca = CloudAccount.read(self.role)
         regions = CloudRegion.read(self.role)
         objs = {}
         for d in data['content']:
             obj = {
                 'name': d['name'],
-                'customProperties': d['customProperties'] if 'customProperties' in d['customProperties'] else {},
-                'regionId': regions['objs'][d['_links']['region']['href'].split('regions/')[1]]['name']
+                'cloudAccount': ca[d['_links']['cloud-account']['href'].split(self._ca_key)[1]],
+                'payload': {
+                    'name': d['name'],
+                    'customProperties': d['customProperties'] if 'customProperties' in d['customProperties'] else {},
+                    'regionId': regions['objs'][d['_links']['region']['href'].split('regions/')[1]]['name']
+                }
             }
             if 'folder' in d: obj['folder'] = d['folder']
             if 'tagsToMatch' in d: obj['tagsToMatch'] = d['tagsToMatch']
@@ -79,35 +84,45 @@ class CloudZone(VRAOBJ):
             objs[d['id']] = obj
         result = {
             'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['regionId'])
+            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['payload']['regionId'])
         }
         CloudZone.write(self.role, result)
     
-    def dump_80(self): self._dump()        
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
+    def dump_80(self):
+        self._ca_key = 'endpoints/'
+        self._dump()
+    def dump_81(self):
+        self._ca_key = 'cloud-accounts/'
+        self._dump()
+    def dump_82(self):
+        self._ca_key = 'cloud-accounts/'
+        self._dump()
     
     def _sync(self):
-        srcs = self.__class__.read('src')
-        tgts = self.__class__.read('tgt')
+        srcs = CloudZone.read('src')
+        tgts = CloudZone.read('tgt')
+        ca = CloudAccount.read(self.role).values()
         regions = CloudRegion.read(self.role)
         completed = 0
         for src_link in srcs['link']:
             src = srcs['objs'][src_link]
-            for tgt in tgts['objs'].values(): # find same name
-                if src['name'] == tgt['name']:
+            if src['cloudAccount'] not in ca:
+                print('│ ! error: could not find cloud account of cloud zone [%s]' % src['name'])
+                continue
+            for tgt in tgts['objs'].values():
+                if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount']:
                     print('│ bypass cloud zone [%s]' % src['name'])
                     completed += 1
                     break
             else: # if not exist, create cloud zone
-                region_name = src['regionId']
+                region_name = src['payload']['regionId']
                 for id, region in regions['objs'].items():
                     if region['name'] == region_name:
-                        src['regionId'] = id
+                        src['payload']['regionId'] = id
                         break
                 else:
                     print('│ ! error: could not find region of cloud zone [%s]' % src['name'])
-                try: self.post('/iaas/api/zones', src)
+                try: self.post('/iaas/api/zones', src['payload'])
                 except: print('│ ! error: could not create cloud zone [%s]' % src['name'])
                 else:
                     print('│ * create cloud zone [%s]' % src['name'])
