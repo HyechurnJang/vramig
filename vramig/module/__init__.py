@@ -15,7 +15,7 @@ def execute(args, conf):
     
     if args[0] == 'vramig': args = args[1:]
     args = parser.parse_args(args)
-    
+
     if args.command not in ['list', 'src', 'tgt', 'dump', 'sync']:
         print('command must be "list", "src", "tgt", "dump", "sync"')
         exit(1)
@@ -41,17 +41,17 @@ def execute(args, conf):
         objs = args.objects
     
     if args.command == 'dump':
-        src_vra = VRA(conf, 'src')
-        tgt_vra = VRA(conf, 'tgt')
+        src_vra = VRA(conf, 'src', args.debug)
+        tgt_vra = VRA(conf, 'tgt', args.debug)
         for obj in objs:
-            print('┌  {} Dump Start ─────────────────────┐'.format(obj))
+            print('┌  %-32s Dump Start ─────────────────────┐' % obj)
             REGISTERED_OBJECTS[obj](src_vra, tgt_vra).dump()
-            print('└  {} Sync Finish ────────────────────┘\n'.format(obj))
+            print('└  %-32s Dump Finish ────────────────────┘\n' % obj)
     elif args.command == 'sync':
-        tgt_vra = VRA(conf, 'tgt')
+        tgt_vra = VRA(conf, 'tgt', args.debug)
         for obj in objs:
-            print('┌  {} Sync Start ─────────────────────┐'.format(obj))
+            print('┌  %-32s Sync Start ─────────────────────┐' % obj)
             REGISTERED_OBJECTS[obj](None, tgt_vra).sync()
-            print('└  {} Sync Finish ────────────────────┘\n'.format(obj))
+            print('└  %-32s Sync Finish ────────────────────┘\n' % obj)
     
     print('All Finished')
