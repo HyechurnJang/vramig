@@ -10,6 +10,7 @@ Created on 2021. 1. 8..
 @author: Hye-Churn Jang, CMBU Specialist in Korea, VMware [jangh@vmware.com]
 '''
 
+import json
 from .common import VRAOBJ, register_object
 
 @register_object
@@ -22,6 +23,7 @@ class CloudAccount(VRAOBJ):
         self.printDataInfo(data)
         result = {}
         for d in data['content']: result[d['id']] = d['name']
+        print(' => %d' % len(result))
         CloudAccount.write(self.role, result)
     
     def dump_80(self): self._dump()
@@ -50,7 +52,9 @@ class CloudRegion(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'])
         }
+        self.printResultInfo(result)
         CloudRegion.write(self.role, result)
+        
         
     def dump_80(self): self._dump()        
     def dump_81(self): self._dump()
@@ -91,6 +95,7 @@ class CloudZone(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
         }
+        self.printResultInfo(result)
         CloudZone.write(self.role, result)
     
     def dump_80(self):
@@ -165,6 +170,7 @@ class FabricCompute(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['externalId'])
         }
+        self.printResultInfo(result)
         FabricCompute.write(self.role, result)
      
     def dump_81(self):
@@ -183,6 +189,7 @@ class FabricCompute(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['externalId'])
         }
+        self.printResultInfo(result)
         FabricCompute.write(self.role, result)
     
     def dump_82(self): self.dump_81()
@@ -231,35 +238,13 @@ class FabricNetwork(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'])
         }
+        self.printResultInfo(result)
         FabricNetwork.write(self.role, result)
     
     def dump_80(self): self._dump()
     def dump_81(self): self._dump()
     def dump_82(self): self._dump()
     
-#    def _sync(self):
-#        srcs = FabricNetwork.read('src')
-#        tgts = FabricNetwork.read('tgt')
-#        completed = 0
-#        for src_link in srcs['link']:
-#            src = srcs['objs'][src_link]
-#            for id, tgt in tgts['objs'].items():
-#                if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount']:
-#                    try: self.patch('/iaas/api/fabric-networks/' + id, src['payload'])
-#                    except:
-#                        if self._debug: print('  ! error: could not set tag to fabric network [%s]' % src['name'])
-#                    else:
-#                        if self._debug: print('  * set tag to fabric network [%s]' % src['name'])
-#                        completed += 1
-#                    break
-#            else:
-#                if self._debug: print('  ! error: could not find fabric network [%s : %s]' % (src['name'], src['cloudAccount']))
-#        print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-#    
-#    def sync_80(self): self._sync()
-#    def sync_81(self): self._sync()
-#    def sync_82(self): self._sync()
-
 
 @register_object
 class FabricNetworkvSphere(VRAOBJ):
@@ -293,6 +278,7 @@ class FabricNetworkvSphere(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'])
         }
+        self.printResultInfo(result)
         FabricNetworkvSphere.write(self.role, result)
     
     def dump_80(self): self._dump()
@@ -353,6 +339,7 @@ class IPRange(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['network'])
         }
+        self.printResultInfo(result)
         IPRange.write(self.role, result)
      
     def dump_80(self): self._dump()
@@ -408,6 +395,7 @@ class NetworkProfile(VRAOBJ):
         networks = FabricNetwork.read(self.role)
         objs = {}
         for d in data['content']:
+            if 'fabric-networks' not in d['_links']: continue;
             region_id = d['_links']['region']['href'].split('regions/')[1]
             region = regions['objs'][region_id]
             fabricNetworkIds = []
@@ -443,6 +431,7 @@ class NetworkProfile(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
         }
+        self.printResultInfo(result)
         NetworkProfile.write(self.role, result)
 
     def dump_80(self): self._dump()
@@ -527,6 +516,7 @@ class FabricDatastore(VRAOBJ):
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
         }
+        self.printResultInfo(result)
         FabricDatastore.write(self.role, result)
 
     def dump_80(self): self._dump()
@@ -535,56 +525,71 @@ class FabricDatastore(VRAOBJ):
 
 
 @register_object
-class FabricDatastorevSphere(VRAOBJ):
-
+class DatastoreProfile(VRAOBJ):
+    
     def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-
+    
     def _dump(self):
-        data = self.get('/iaas/api/storage-profiles-vsphere?$limit=10000')
-        self.printDataInfo(data)
+        data = self.getUerp('/provisioning/mgmt/storage-profile?expand&$top=10000')
+        profiles = self.get('/iaas/api/storage-profiles-vsphere?$limit=10000')
+        self.printDataInfo(profiles)
+        profiles = profiles['content']
+        ca = CloudAccount.read(self.role)
         regions = CloudRegion.read(self.role)
         datastores = FabricDatastore.read(self.role)
         objs = {}
-        for d in data['content']:
-            region_id = d['_links']['region']['href'].split('regions/')[1]
-            region = regions['objs'][region_id]
-            datastore_id = d['_links']['datastore']['href'].split('datastores/')[1]
-            datastore = datastores['objs'][datastore_id]
-            objs[d['id']] = {
-                'name': d['name'],
-                'cloudAccountId': region['cloudAccountId'],
-                'cloudAccount': region['cloudAccount'],
-                'regionId': region_id,
-                'region': region['name'],
-                'datastoreId': datastore_id,
-                'datastore': datastore['name'],
-                'payload': {
-                    'name': d['name'],
-                    'description': d['description'] if 'description' in d else '',
-                    'defaultItem': d['defaultItem'] if 'defaultItem' in d else False,
-                    'sharesLevel': d['sharesLevel'] if 'sharesLevel' in d else '',
-                    'provisioningType': d['provisioningType'] if 'provisioningType' in d else '',
-                    'limitIops': d['limitIops'] if 'limitIops' in d else '',
-                    'shares': d['shares'] if 'shares' in d else '',
-                    'diskMode': d['diskMode'] if 'diskMode' in d else '',
-                    'supportsEncryption': d['supportsEncryption'] if 'supportsEncryption' in d else '',
-                    'tags': d['tags'] if 'tags' in d else []
-                    # 'storagePolicyId': ''
-                }
-            }
+        for d in data['documents'].values():
+            cloud_account_id = d['endpointLinks'][0].split('endpoints/')[1]
+            cloud_account_name = ca[cloud_account_id]
+            region_name = d['regionId']
+            for rid, region in regions['objs'].items():
+                if region['name'] == region_name and region['cloudAccountId'] == cloud_account_id:
+                    region_id = rid
+                    break
+            else:
+                if self._debug: print('  ! error: could not find region of fabric datastore profile [%s / %s]' % (d['name'], cloud_account_name))
+                continue
+            for s in d['storageItems']:
+                for p in profiles:
+                    if p['name'] == s['name'] and p['cloudAccountId'] == cloud_account_id and p['_links']['region']['href'].split('regions/')[1] == region_id:
+                        tags = p['tags'] if 'tags' in p else []
+                        break
+                if 'storageDescriptionLink' in s:
+                    datastore_id = s['storageDescriptionLink'].split('storage-descriptions/')[1]
+                    datastore_name = datastores['objs'][datastore_id]['name']
+                    objs[s['id']] = {
+                        'name': s['name'],
+                        'cloudAccountId': cloud_account_id,
+                        'cloudAccount': cloud_account_name,
+                        'regionId': region_id,
+                        'region': region_name,
+                        'datastoreId': datastore_id,
+                        'datastore': datastore_name,
+                        'tags': tags,
+                        'payload': {
+                            'name': s['name'],
+                            'cloudAccountType': 'vsphere',
+                            'desc': s['description'] if 'description' in s else '',
+                            'defaultItem': s['defaultItem'],
+                            'supportsEncryption': s['supportsEncryption'] if 'supportsEncryption' in s else False,
+                            'customProperties': s['diskProperties'] if 'diskProperties' in s else {},
+                        }
+                    }
         result = {
             'objs': objs,
             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
         }
-        FabricDatastorevSphere.write(self.role, result)
+        self.printResultInfo(result)
+        DatastoreProfile.write(self.role, result)
+        
 
     def dump_80(self): self._dump()
     def dump_81(self): self._dump()
     def dump_82(self): self._dump()
 
     def _sync(self):
-        srcs = FabricDatastorevSphere.read('src')
-        tgts = FabricDatastorevSphere.read('tgt')
+        srcs = DatastoreProfile.read('src')
+        tgts = DatastoreProfile.read('tgt')
         regions = CloudRegion.read(self.role)
         datastores = FabricDatastore.read(self.role)
         completed = 0
@@ -592,13 +597,16 @@ class FabricDatastorevSphere(VRAOBJ):
             src = srcs['objs'][src_link]
             for id, tgt in tgts['objs'].items():
                 if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount'] and src['region'] == tgt['region'] and src['datastore'] == tgt['datastore']:
-                    src['payload']['regionId'] = tgt['regionId']
-                    src['payload']['datastoreId'] = tgt['datastoreId']
-                    try: self.patch('/iaas/api/storage-profiles-vsphere/' + id, src['payload'])
+                    src['payload']['provisioningRegionLink'] = '/provisioning/resources/' + tgt['regionId']
+                    src['payload']['storageDescriptionLink'] = '/resources/storage-descriptions/' + tgt['datastoreId']
+                    try:
+                        res = self.post('/provisioning/uerp/provisioning/mgmt/tag-assignment', {'tagsToAssign': src['tags']})
+                        src['payload']['tagLinks'] = res['tagLinks'] if 'tagLinks' in res else []
+                        self.put('/provisioning/uerp/provisioning/mgmt/flat-storage-profile/' + id, src['payload'])
                     except:
-                        if self._debug: print('  ! error: could not update fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+                        if self._debug: print('  ! error: could not update datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
                     else:
-                        if self._debug: print('  * update fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+                        if self._debug: print('  * update datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
                         completed += 1
                     break
             else:
@@ -606,28 +614,127 @@ class FabricDatastorevSphere(VRAOBJ):
                 region_name = src['region']
                 for rid, region in regions['objs'].items():
                     if region['name'] == region_name and region['cloudAccount'] == cloud_account_name:
-                        src['payload']['regionId'] = rid
+                        src['payload']['provisioningRegionLink'] = '/provisioning/resources/' + rid
                         datastore_name = src['datastore']
                         for did, datastore in datastores['objs'].items():
                             if datastore['name'] == datastore_name and datastore['cloudAccount'] == cloud_account_name and datastore['region'] == region_name:
-                                src['payload']['datastoreId'] = did
-                                try: self.post('/iaas/api/storage-profiles-vsphere', src['payload'])
+                                src['payload']['storageDescriptionLink'] = '/resources/storage-descriptions/' + did
+                                try:
+                                    res = self.post('/provisioning/uerp/provisioning/mgmt/tag-assignment', {'tagsToAssign': src['tags']})
+                                    src['payload']['tagLinks'] = res['tagLinks'] if 'tagLinks' in res else []
+                                    res = self.post('/provisioning/uerp/provisioning/mgmt/flat-storage-profile', src['payload'])
                                 except:
-                                    if self._debug: print('  ! error: could not create fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+                                    if self._debug: print('  ! error: could not create datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
                                 else:
-                                    if self._debug: print('  + create fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+                                    if self._debug: print('  + create datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
                                     completed += 1
                                 break
                         else:
-                            if self._debug: print('  ! error: could not find datastore of fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+                            if self._debug: print('  ! error: could not find datastore of datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
                         break
                 else:
-                    if self._debug: print('  ! error: could not find region of fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+                    if self._debug: print('  ! error: could not find region of datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
         print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-
+  
     def sync_80(self): self._sync()
     def sync_81(self): self._sync()
     def sync_82(self): self._sync()
+
+
+# @register_object
+# class FabricDatastorevSphere(VRAOBJ):
+#   
+#     def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
+#   
+#     def _dump(self):
+#         data = self.get('/iaas/api/storage-profiles-vsphere?$limit=10000')
+#         self.printDataInfo(data)
+#         regions = CloudRegion.read(self.role)
+#         datastores = FabricDatastore.read(self.role)
+#         objs = {}
+#         for d in data['content']:
+#             region_id = d['_links']['region']['href'].split('regions/')[1]
+#             region = regions['objs'][region_id]
+#             datastore_id = d['_links']['datastore']['href'].split('datastores/')[1]
+#             datastore = datastores['objs'][datastore_id]
+#             objs[d['id']] = {
+#                 'name': d['name'],
+#                 'cloudAccountId': region['cloudAccountId'],
+#                 'cloudAccount': region['cloudAccount'],
+#                 'regionId': region_id,
+#                 'region': region['name'],
+#                 'datastoreId': datastore_id,
+#                 'datastore': datastore['name'],
+#                 'payload': {
+#                     'name': d['name'],
+#                     'description': d['description'] if 'description' in d else '',
+#                     'defaultItem': d['defaultItem'] if 'defaultItem' in d else False,
+#                     'sharesLevel': d['sharesLevel'] if 'sharesLevel' in d else '',
+#                     'provisioningType': d['provisioningType'] if 'provisioningType' in d else '',
+#                     'limitIops': d['limitIops'] if 'limitIops' in d else '',
+#                     'shares': d['shares'] if 'shares' in d else '',
+#                     'diskMode': d['diskMode'] if 'diskMode' in d else '',
+#                     'supportsEncryption': d['supportsEncryption'] if 'supportsEncryption' in d else '',
+#                     'tags': d['tags'] if 'tags' in d else []
+#                     # 'storagePolicyId': ''
+#                 }
+#             }
+#         result = {
+#             'objs': objs,
+#             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
+#         }
+#         FabricDatastorevSphere.write(self.role, result)
+#   
+#     def dump_80(self): self._dump()
+#     def dump_81(self): self._dump()
+#     def dump_82(self): self._dump()
+#   
+#     def _sync(self):
+#         srcs = FabricDatastorevSphere.read('src')
+#         tgts = FabricDatastorevSphere.read('tgt')
+#         regions = CloudRegion.read(self.role)
+#         datastores = FabricDatastore.read(self.role)
+#         completed = 0
+#         for src_link in srcs['link']:
+#             src = srcs['objs'][src_link]
+#             for id, tgt in tgts['objs'].items():
+#                 if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount'] and src['region'] == tgt['region'] and src['datastore'] == tgt['datastore']:
+#                     src['payload']['regionId'] = tgt['regionId']
+#                     src['payload']['datastoreId'] = tgt['datastoreId']
+#                     try: self.patch('/iaas/api/storage-profiles-vsphere/' + id, src['payload'])
+#                     except:
+#                         if self._debug: print('  ! error: could not update fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+#                     else:
+#                         if self._debug: print('  * update fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+#                         completed += 1
+#                     break
+#             else:
+#                 cloud_account_name = src['cloudAccount']
+#                 region_name = src['region']
+#                 for rid, region in regions['objs'].items():
+#                     if region['name'] == region_name and region['cloudAccount'] == cloud_account_name:
+#                         src['payload']['regionId'] = rid
+#                         datastore_name = src['datastore']
+#                         for did, datastore in datastores['objs'].items():
+#                             if datastore['name'] == datastore_name and datastore['cloudAccount'] == cloud_account_name and datastore['region'] == region_name:
+#                                 src['payload']['datastoreId'] = did
+#                                 try: self.post('/iaas/api/storage-profiles-vsphere', src['payload'])
+#                                 except:
+#                                     if self._debug: print('  ! error: could not create fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+#                                 else:
+#                                     if self._debug: print('  + create fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+#                                     completed += 1
+#                                 break
+#                         else:
+#                             if self._debug: print('  ! error: could not find datastore of fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+#                         break
+#                 else:
+#                     if self._debug: print('  ! error: could not find region of fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
+#         print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
+#   
+#     def sync_80(self): self._sync()
+#     def sync_81(self): self._sync()
+#     def sync_82(self): self._sync()
 
 
 

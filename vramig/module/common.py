@@ -45,37 +45,37 @@ class VRASession:
     
     def get(self, url):
         res = self._session.get(self._base_url + url)
-        if self._debug and res.status_code >= 400: print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
+        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def getUerp(self, url):
         res = self._session.get(self._base_url + '/provisioning/uerp' + url)
-        if self._debug and res.status_code >= 400: print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
+        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def post(self, url, data):
         res = self._session.post(self._base_url + url, json=data)
-        if self._debug and res.status_code >= 400: print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
+        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def put(self, url, data):
         res = self._session.put(self._base_url + url, json=data)
-        if self._debug and res.status_code >= 400: print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
+        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def patch(self, url, data):
         res = self._session.patch(self._base_url + url, json=data)
-        if self._debug and res.status_code >= 400: print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
+        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def delete(self, url):
         res = self._session.delete(self._base_url + url)
-        if self._debug and res.status_code >= 400: print('DEBUG STATUS CODE : %d\n%s' % (res.status_code, res.text))
+        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
 
@@ -112,9 +112,12 @@ class VRAOBJ:
     
     def printDataInfo(self, data):
         if 'numberOfElements' in data and 'totalElements' in data:
-            print('  %s : %4d / %-4d' % (self.role, data['numberOfElements'], data['totalElements']))
+            print('  %s : %4d / %-4d' % (self.role, data['numberOfElements'], data['totalElements']), end='')
         elif 'totalCount' in data:
-            print('  %s : %4d / %-4d' % (self.role, data['documentCount'], data['totalCount']))
+            print('  %s : %4d / %-4d' % (self.role, data['documentCount'], data['totalCount']), end='')
+    
+    def printResultInfo(self, result):
+        print(' => %d' % len(result['link']))
     
     @classmethod
     def write(cls, role, data):

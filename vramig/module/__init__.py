@@ -44,14 +44,14 @@ def execute(args, conf):
         src_vra = VRA(conf, 'src', args.debug)
         tgt_vra = VRA(conf, 'tgt', args.debug)
         for obj in objs:
-            print('┌  %-32s Dump Start ─────────────────────┐' % obj)
+            print('┌  Dump : %-24s ─────────────────────────────┐' % obj)
             REGISTERED_OBJECTS[obj](src_vra, tgt_vra).dump()
-            print('└  %-32s Dump Finish ────────────────────┘\n' % obj)
+            print('└  Dump : %-24s ─────────────────────────────┘\n' % obj)
     elif args.command == 'sync':
         tgt_vra = VRA(conf, 'tgt', args.debug)
         for obj in objs:
-            print('┌  %-32s Sync Start ─────────────────────┐' % obj)
+            print('┌  Sync : %-24s ─────────────────────────────┐' % obj)
             REGISTERED_OBJECTS[obj](None, tgt_vra).sync()
-            print('└  %-32s Sync Finish ────────────────────┘\n' % obj)
+            print('└  Sync : %-24s ─────────────────────────────┘\n' % obj)
     
     print('All Finished')

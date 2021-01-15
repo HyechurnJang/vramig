@@ -146,3 +146,9 @@ dmypy.json
 /FabricNetworkvSphere.tgt.json
 /IPRange.src.json
 /IPRange.tgt.json
+/DatastoreProfile.src.json
+/DatastoreProfile.tgt.json
+/FabricDatastore.src.json
+/FabricDatastore.tgt.json
+/NetworkProfile.src.json
+/NetworkProfile.tgt.json
