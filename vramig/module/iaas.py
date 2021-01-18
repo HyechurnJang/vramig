@@ -736,7 +736,78 @@ class DatastoreProfile(VRAOBJ):
 #     def sync_81(self): self._sync()
 #     def sync_82(self): self._sync()
 
+@register_object
+class FabricImage(VRAOBJ):
+    
+    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
+    
+    def _dump(self):
+        data = self.getUerp('/provisioning/mgmt/image?expand&$top=10000&$filter=(endpointType ne \'aws\')')
+        self.printDataInfo(data)
+        ca = CloudAccount.read(self.role)
+        regions = CloudRegion.read(self.role)
+        objs = {}
+        for d in data['documents'].values():
+            cloud_account_id = d['endpointLink'].split('endpoints/')[1]
+            cloud_account_name = ca[cloud_account_id]
+            region_name = d['regionId']
+            for rid, region in regions['objs'].items():
+                if region['name'] == region_name and region['cloudAccountId'] == cloud_account_id:
+                    region_id = rid
+                    break
+            else:
+                if self._debug: print('  ! error: could not find region of fabric image [%s / %s]' % (d['name'], cloud_account_name))
+                continue
+            objs[d['id']] = {
+                'name': d['name'],
+                'cloudAccountId': cloud_account_id,
+                'cloudAccount': cloud_account_name,
+                'regionId': region_id,
+                'region': region_name,
+                'moId': d['customProperties']['__moref']
+            }
+        result = {
+            'objs': objs,
+            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
+        }
+        self.printResultInfo(result)
+        FabricImage.write(self.role, result)
+        
 
+    def dump_80(self): self._dump()
+    def dump_81(self): self._dump()
+    def dump_82(self): self._dump()
 
+@register_object
+class ImageMap(VRAOBJ):
+    
+    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
+    
+    def _dump(self):
+        data = self.getUerp('/provisioning/mgmt/image-names?view=list')
+        print('  %s : %-4d' % (self.role, len(data)), end='')
+        ca = CloudAccount.read(self.role)
+        regions = CloudRegion.read(self.role)
+        images = FabricImage.read(self.role)
+        objs = {}
+        for d in data.values():
+            image_list = []
+            for i in d['imageMapping'].values():
+                image_id = i['imageLink'].split('images/')[1]
+                image_list.append(images['objs'][image_id])
+#             objs[d['id']] = {
+#                 'name': d['name']
+#                 'payload'
+#             }
+        result = {
+            'objs': objs,
+            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
+        }
+        self.printResultInfo(result)
+        ImageMap.write(self.role, result)
+        
 
+    def dump_80(self): self._dump()
+    def dump_81(self): self._dump()
+    def dump_82(self): self._dump()
 

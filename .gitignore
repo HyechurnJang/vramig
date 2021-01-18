@@ -152,3 +152,5 @@ dmypy.json
 /FabricDatastore.tgt.json
 /NetworkProfile.src.json
 /NetworkProfile.tgt.json
+/FabricImage.src.json
+/FabricImage.tgt.json
