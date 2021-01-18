@@ -23,10 +23,13 @@ def register_object(cls):
     REGISTERED_OBJECTS[cls.__name__] = cls
     return cls
 
+DEBUG = {'debug': False}
+def setDebugMode(): DEBUG['debug'] = True
+def isDebug(): return DEBUG['debug']
+
 class VRASession:
     
-    def __init__(self, hostname, username, password, debug=False):
-        self._debug = debug
+    def __init__(self, hostname, username, password):
         self._hostname = hostname
         self._base_url = 'https://' + self._hostname
         self._session = requests.Session()
@@ -45,108 +48,123 @@ class VRASession:
     
     def get(self, url):
         res = self._session.get(self._base_url + url)
-        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
-        res.raise_for_status()
-        return res.json()
-    
-    def getUerp(self, url):
-        res = self._session.get(self._base_url + '/provisioning/uerp' + url)
-        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
+        if isDebug() and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def post(self, url, data):
         res = self._session.post(self._base_url + url, json=data)
-        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
+        if isDebug() and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def put(self, url, data):
         res = self._session.put(self._base_url + url, json=data)
-        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
+        if isDebug() and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def patch(self, url, data):
         res = self._session.patch(self._base_url + url, json=data)
-        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
+        if isDebug() and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
     
     def delete(self, url):
         res = self._session.delete(self._base_url + url)
-        if self._debug and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
+        if isDebug() and res.status_code >= 400: print('  ! rest status code [%d]\n  ? %s' % (res.status_code, res.text))
         res.raise_for_status()
         return res.json()
 
 class VRA(VRASession):
     
-    def __init__(self, conf, role, debug=False):
-        VRASession.__init__(self, conf[role]['hostname'], conf[role]['username'], conf[role]['password'], debug)
-        self._version = conf[role]['version']
+    def __init__(self, conf, role):
+        VRASession.__init__(self, conf[role]['hostname'], conf[role]['username'], conf[role]['password'])
+        self.role = role
+        self.ver = conf[role]['version']
 
-class VRAOBJ:
+
+class Object(dict):
     
-    def __init__(self, src_vra, tgt_vra):
-        self.role = None
-        self._vra = None
-        self._src_vra = src_vra
-        self._tgt_vra = tgt_vra
-        self._debug = tgt_vra._debug
-        self._model = self.__class__.__name__
+    RELATIONS = []
+    LOAD_URL = ''
     
-    def setSrc(self):
-        self.role = 'src'
-        self._vra = self._src_vra
+    def __init__(self):
+        dict.__init__(self)
     
-    def setTgt(self):
-        self.role = 'tgt'
-        self._vra = self._tgt_vra
+    def get(self, url): return self.vra.get(url)
+    def post(self, url, data): return self.vra.post(url, data)
+    def put(self, url, data): return self.vra.put(url, data)
+    def patch(self, url, data): return self.vra.patch(url, data)
+    def delete(self, url): return self.vra.delete(url)
     
-    def get(self, url): return self._vra.get(url)
-    def getUerp(self, url): return self._vra.getUerp(url)
-    def post(self, url, data): return self._vra.post(url, data)
-    def put(self, url, data): return self._vra.put(url, data)
-    def patch(self, url, data): return self._vra.patch(url, data)
-    def delete(self, url): return self._vra.delete(url)
+    def dump(self, role):
+        with open(self.__class__.__name__ + '.%s.json' % role, 'w') as fd: fd.write(jps(self))
     
-    def printDataInfo(self, data):
+    @classmethod
+    def loadFile(cls, role, object=None):
+        if not object: object = cls
+        with open(object.__name__ + '.%s.json' % role, 'r') as fd: data = fd.read()
+        data = json.loads(data)
+        o = object()
+        o.role = role
+        o['map'] = data['map']
+        o['ids'] = data['ids']
+        o['dns'] = data['dns']
+        o['count'] = data['count']
+        return o
+    
+    def loadData(self, vra):
+        self.role = vra.role
+        self.ver = vra.ver
+        data = vra.get(self.__class__.LOAD_URL)
         if 'numberOfElements' in data and 'totalElements' in data:
-            print('  %s : %4d / %-4d' % (self.role, data['numberOfElements'], data['totalElements']), end='')
+            print('  %s : %4d / %-4d' % (vra.role, data['numberOfElements'], data['totalElements']), end='')
         elif 'totalCount' in data:
-            print('  %s : %4d / %-4d' % (self.role, data['documentCount'], data['totalCount']), end='')
-    
-    def printResultInfo(self, result):
-        print(' => %d' % len(result['link']))
-    
-    @classmethod
-    def write(cls, role, data):
-        with open(cls.__name__ + '.%s.json' % role, 'w') as fd: fd.write(jps(data))
-    
-    @classmethod
-    def read(cls, role):
-        with open(cls.__name__ + '.%s.json' % role, 'r') as fd: return json.loads(fd.read())
-    
-    def dump(self):
-        self.setSrc()
-        if self._vra._version == '8.0': self.dump_80()
-        elif self._vra._version == '8.1': self.dump_81()
-        elif self._vra._version == '8.2': self.dump_82()
-        self.setTgt()
-        if self._vra._version == '8.0': self.dump_80()
-        elif self._vra._version == '8.1': self.dump_81()
-        elif self._vra._version == '8.2': self.dump_82()
+            print('  %s : %4d / %-4d' % (vra.role, data['documentCount'], data['totalCount']), end='')
+        elif isinstance(data, list):
+            print('  %s : %4d / %-4d' % (vra.role, len(data), len(data)), end='')
+        rels = [ object.loadFile(vra.role) for object in self.__class__.RELATIONS ]
+        self['map'], self['ids'], self['dns'], self['count'] = self.parse(data, *rels)
+        print(' => %d' % self['count'])
+        self.dump(vra.role)
+        return self
         
-    def dump_80(self): pass
-    def dump_81(self): pass
-    def dump_82(self): pass
+    def syncData(self, vra, src):
+        rels = [ object.loadFile(vra.role) for object in self.__class__.RELATIONS ]
+        completed = self.sync(vra, src, *rels)
+        if completed:
+            print('  %d objects synced' % completed)
+            self.loadData(vra)
+        return self
     
-    def sync(self):
-        self.setTgt()
-        if self._vra._version == '8.0': self.sync_80()
-        elif self._vra._version == '8.1': self.sync_81()
-        elif self._vra._version == '8.2': self.sync_82()
+    def findID(self, id):
+        try: return self['map'][id]
+        except:
+            if isDebug(): print('  ! could not find data with id(%s)' % id)
+            return None
+    
+    def findDN(self, dn):
+        try:
+            id = self['dns'][dn]
+            return self['map'][id]
+        except:
+            if isDebug(): print('  ! could not find data with dn(%s)' % dn)
+        return None
+    
+    def getMaps(self):
+        return self['map'].values()
+    
+    def getIDMaps(self):
+        return self['map'].items()
+    
+    def getSortedMaps(self):
+        return sorted(self['map'].values(), key=lambda x: x['dn'])
+    
+    def getSortedIDMaps(self):
+        return sorted(self['map'].items(), key=lambda x: x[1]['dn'])
+    
+    # Interfaces
+    def parse(self, data, *rels): pass
+    def sync(self, vra, src, *rels): return 0
         
-    def sync_80(self): pass
-    def sync_81(self): pass
-    def sync_82(self): pass

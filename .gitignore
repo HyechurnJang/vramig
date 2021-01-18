@@ -154,3 +154,15 @@ dmypy.json
 /NetworkProfile.tgt.json
 /FabricImage.src.json
 /FabricImage.tgt.json
+/ImageProfile.src.json
+/ImageProfile.tgt.json
+/NetworkDomain.src.json
+/NetworkDomain.tgt.json
+/Project.src.json
+/Project.tgt.json
+/StorageDescription.src.json
+/StorageDescription.tgt.json
+/StorageProfile.src.json
+/StorageProfile.tgt.json
+/StorageProfilevSphere.src.json
+/StorageProfilevSphere.tgt.json

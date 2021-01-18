@@ -11,803 +11,653 @@ Created on 2021. 1. 8..
 '''
 
 import json
-from .common import VRAOBJ, register_object
-
+from .common import Object, register_object, isDebug, jps, jpp
+   
 @register_object
-class CloudAccount(VRAOBJ):
+class CloudAccount(Object):
     
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
+    RELATIONS = []
+    LOAD_URL = '/iaas/api/cloud-accounts?$limit=10000'
     
-    def _dump(self):
-        data = self.get('/iaas/api/cloud-accounts?$limit=10000')
-        self.printDataInfo(data)
-        result = {}
-        for d in data['content']: result[d['id']] = d['name']
-        print(' => %d' % len(result))
-        CloudAccount.write(self.role, result)
+    def __init__(self): Object.__init__(self)
     
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
-
-
-@register_object
-class CloudRegion(VRAOBJ):
-    
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-    
-    def _dump(self):
-        data = self.get('/iaas/api/regions?$limit=10000')
-        self.printDataInfo(data)
-        ca = CloudAccount.read(self.role)
-        objs = {}
+    def parse(self, data, *rels):
+        map, ids, dns, count = {}, [], {}, 0
         for d in data['content']:
-            cloud_account_id = d['cloudAccountId']
-            objs[d['id']] = {
-                'name': d['externalRegionId'],
-                'cloudAccountId': cloud_account_id,
-                'cloudAccount': ca[cloud_account_id]
-            }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'])
-        }
-        self.printResultInfo(result)
-        CloudRegion.write(self.role, result)
-        
-        
-    def dump_80(self): self._dump()        
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
+            id = d['id']
+            name = d['name']
+            map[id] = name
+            ids.append(id)
+            dns[name] = id
+            count += 1
+        return map, ids, dns, count
 
 
 @register_object
-class CloudZone(VRAOBJ):
-     
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
+class CloudRegion(Object):
     
-    def _dump(self):
-        data = self.get('/iaas/api/zones?$limit=10000')
-        self.printDataInfo(data)
-        ca = CloudAccount.read(self.role)
-        regions = CloudRegion.read(self.role)
-        objs = {}
+    RELATIONS = [CloudAccount]
+    LOAD_URL = '/iaas/api/regions?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, accounts):
+        map, ids, dns, count = {}, [], {}, 0
         for d in data['content']:
-            cloud_account_id = d['_links']['cloud-account']['href'].split(self._ca_key)[1]
-            region_id = d['_links']['region']['href'].split('regions/')[1]
-            objs[d['id']] = {
-                'name': d['name'],
-                'cloudAccountId': cloud_account_id,
-                'cloudAccount': ca[cloud_account_id],
-                'regionId': region_id,
-                'region': regions['objs'][region_id]['name'],
-                'payload': {
-                    'name': d['name'],
-                    'description': d['description'] if 'description' in d else '',
-                    'placementPolicy': d['placementPolicy'] if 'placementPolicy' in d else '',
-                    'folder': d['folder'] if 'folder' in d else '',
-                    'tagsToMatch': d['tagsToMatch'] if 'tagsToMatch' in d else '',
-                    'tags': d['tags'] if 'tags' in d else '',
-                    'customProperties': d['customProperties'] if 'customProperties' in d['customProperties'] else {}
-                }
-            }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
-        }
-        self.printResultInfo(result)
-        CloudZone.write(self.role, result)
+            id = d['id']
+            name = d['externalRegionId']
+            ca = accounts.findID(d['cloudAccountId'])
+            dn = ca + '/' + name
+            map[id] = {'id': id, 'name': name, 'ca': ca, 'dn': dn}
+            ids.append(id)
+            dns[dn] = id
+            count += 1
+        return map, ids, dns, count
     
-    def dump_80(self):
-        self._ca_key = 'endpoints/'
-        self._dump()        
-    def dump_81(self):
-        self._ca_key = 'cloud-accounts/'
-        self._dump()
-    def dump_82(self):
-        self._ca_key = 'cloud-accounts/'
-        self._dump()
-    
-    def _sync(self):
-        srcs = CloudZone.read('src')
-        tgts = CloudZone.read('tgt')
-        ca = CloudAccount.read(self.role).values()
-        regions = CloudRegion.read(self.role)
-        completed = 0
-        for src_link in srcs['link']:
-            src = srcs['objs'][src_link]
-            for id, tgt in tgts['objs'].items():
-                if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount'] and src['region'] == tgt['region']:
-                    src['payload']['regionId'] = tgt['regionId']
-                    try: self.patch('/iaas/api/zones/' + id, src['payload'])
-                    except:
-                        if self._debug: print('  ! error: could not update cloud zone [%s / %s]' % (src['name'], src['cloudAccount']))
-                    else:
-                        if self._debug: print('  * update cloud zone [%s / %s]' % (src['name'], src['cloudAccount']))
-                        completed += 1
-                    break
-            else:
-                cloud_account_name = src['cloudAccount']
-                region_name = src['region']
-                for rid, region in regions['objs'].items():
-                    if region['name'] == region_name and region['cloudAccount'] == cloud_account_name:
-                        src['payload']['regionId'] = rid
-                        break
-                else:
-                    if self._debug: print('  ! error: could not find region of cloud zone [%s / %s]' % (src['name'], src['cloudAccount']))
-                    continue
-                try: self.post('/iaas/api/zones', src['payload'])
-                except:
-                    if self._debug: print('  ! error: could not create cloud zone [%s / %s]' % (src['name'], src['cloudAccount']))
-                else:
-                    if self._debug: print('  + create cloud zone [%s / %s]' % (src['name'], src['cloudAccount']))
-                    completed += 1
-        print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-    
-    def sync_80(self): self._sync()
-    def sync_81(self): self._sync()
-    def sync_82(self): self._sync()
-                
 
 @register_object
-class FabricCompute(VRAOBJ):
-      
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-     
-    def dump_80(self): # /provisioning/mgmt/compute?expand
-        data = self.getUerp('/provisioning/mgmt/compute?expand&$top=10000&$filter=((type%20eq%20%27VM_HOST%27)%20or%20(type%20eq%20%27ZONE%27))')
-        self.printDataInfo(data)
-        objs = {}
+class FabricCompute(Object):
+    
+    RELATIONS = [CloudAccount, CloudRegion]
+    LOAD_URL = '/provisioning/mgmt/compute?expand&$top=10000&$filter=((type%20eq%20%27VM_HOST%27)%20or%20(type%20eq%20%27ZONE%27))'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, accounts, regions):
+        map, ids, dns, count = {}, [], {}, 0
         for id, d in data['documents'].items():
-            objs[id] = {
-                'name': d['name'],
-                'externalId': d['customProperties']['vcUuid'] if 'vcUuid' in d['customProperties'] else d['id'],
+            id = id.split('/compute/')[1]
+            name = d['name']
+            ca = accounts.findDN(d['endpoints'][0]['name'])
+            rg = regions.findDN(ca + '/' + d['regionId'])['name']
+            dn = ca + '/' + rg + '/' + name
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
                 'payload': {
                     'tags': sorted([{'key': t['key'], 'value': t['value']} for t in d['tags']] if 'tags' in d else [], key=lambda x: x['key'] + x['value'])
                 }
             }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['externalId'])
-        }
-        self.printResultInfo(result)
-        FabricCompute.write(self.role, result)
-     
-    def dump_81(self):
-        data = self.get('/iaas/api/fabric-computes?$limit=10000')
-        self.printDataInfo(data)
-        objs = {}
-        for d in data['content']:
-            objs[d['id']] = {
-                'name': d['name'],
-                'externalId': d['customProperties']['vcUuid'] if 'vcUuid' in d['customProperties'] else d['externalId'],
-                'payload': {
-                    'tags': sorted(d['tags'], key=lambda x: x['key'] + x['value']) if 'tags' in d else []                
-                }
-            }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['externalId'])
-        }
-        self.printResultInfo(result)
-        FabricCompute.write(self.role, result)
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
     
-    def dump_82(self): self.dump_81()
-    
-    def _sync(self):
-        srcs = FabricCompute.read('src')
-        tgts = FabricCompute.read('tgt')
+    def sync(self, vra, src, accounts, regions):
         completed = 0
-        for src_link in srcs['link']:
-            src = srcs['objs'][src_link]
-            for id, tgt in tgts['objs'].items():
-                if src['name'] == tgt['name'] and src['externalId'] == tgt['externalId']:
-                    try: self.patch('/iaas/api/fabric-computes/' + id, src['payload'])
-                    except:
-                        if self._debug: print('  ! error: could not set tag to fabric compute [%s / %s]' % (src['name'], src['externalId']))
-                    else:
-                        if self._debug: print('  * set tag to fabric compute [%s / %s]' % (src['name'], src['externalId']))
-                        completed += 1
-                    break
-            else:
-                if self._debug: print('  ! error: could not find fabric compute [%s / %s]' % (src['name'], src['externalId']))
-        print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-    
-    def sync_81(self): self._sync()
-    def sync_82(self): self._sync()
-
-
-@register_object
-class FabricNetwork(VRAOBJ):
-     
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-    
-    def _dump(self):
-        data = self.get('/iaas/api/fabric-networks?$limit=10000')
-        self.printDataInfo(data)
-        ca = CloudAccount.read(self.role)
-        objs = {}
-        for d in data['content']:
-            cloud_account_id = d['_links']['cloud-accounts']['hrefs'][0].split('cloud-accounts/')[1]
-            objs[d['id']] = {
-                'name': d['name'],
-                'cloudAccountId': cloud_account_id,
-                'cloudAccount': ca[cloud_account_id]
-            }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'])
-        }
-        self.printResultInfo(result)
-        FabricNetwork.write(self.role, result)
-    
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
-    
-
-@register_object
-class FabricNetworkvSphere(VRAOBJ):
- 
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-     
-    def _dump(self):
-        data = self.get('/iaas/api/fabric-networks-vsphere?$limit=10000')
-        self.printDataInfo(data)
-        ca = CloudAccount.read(self.role)
-        objs = {}
-        for d in data['content']:
-            cloud_account_id = d['_links']['cloud-accounts']['hrefs'][0].split('cloud-accounts/')[1]
-            objs[d['id']] = {
-                'name': d['name'],
-                'cloudAccountId': cloud_account_id,
-                'cloudAccount': ca[cloud_account_id],
-                'payload': {
-                    'cidr': d['cidr'] if 'cidr' in d else '',
-                    'ipv6Cidr': d['ipv6Cidr'] if 'ipv6Cidr' in d else '',
-                    'isDefault': d['isDefault'] if 'isDefault' in d else False,
-                    'domain': d['domain'] if 'domain' in d else '',
-                    'defaultGateway': d['defaultGateway'] if 'defaultGateway' in d else '',
-                    'defaultIpv6Gateway': d['defaultIpv6Gateway'] if 'defaultIpv6Gateway' in d else '',
-                    'dnsServerAddresses': d['dnsServerAddresses'] if 'dnsServerAddresses' in d else [],
-                    'dnsSearchDomains': d['dnsSearchDomains'] if 'dnsSearchDomains' in d else [],
-                    'tags': d['tags'] if 'tags' in d else []
-                }
-            }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'])
-        }
-        self.printResultInfo(result)
-        FabricNetworkvSphere.write(self.role, result)
-    
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
-    
-    def _sync(self):
-        srcs = FabricNetworkvSphere.read('src')
-        tgts = FabricNetworkvSphere.read('tgt')
-        completed = 0
-        for src_link in srcs['link']:
-            src = srcs['objs'][src_link]
-            for id, tgt in tgts['objs'].items():
-                if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount']:
-                    try: self.patch('/iaas/api/fabric-networks-vsphere/' + id, src['payload'])
-                    except:
-                        if self._debug: print('  ! error: could not set subnet to fabric network vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-                    else:
-                        if self._debug: print('  * set subnet to fabric network vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-                        completed += 1
-                    break
-            else:
-                if self._debug: print('  ! error: could not find fabric network vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-        print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-    
-    def sync_80(self): self._sync()
-    def sync_81(self): self._sync()
-    def sync_82(self): self._sync()
-
-
-@register_object
-class IPRange(VRAOBJ):
-      
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-      
-    def _dump(self):
-        data = self.get('/iaas/api/network-ip-ranges?$limit=10000')
-        self.printDataInfo(data)
-        networks = FabricNetwork.read(self.role)
-        objs = {}
-        for d in data['content']:
-            network_id = d['_links']['fabric-network']['href'].split('fabric-networks/')[1]
-            network = networks['objs'][network_id]
-            objs[d['id']] = {
-                'name': d['name'],
-                'cloudAccountId': network['cloudAccountId'],
-                'cloudAccount': network['cloudAccount'],
-                'networkId': network_id,
-                'network': network['name'],
-                'payload': {
-                    'name': d['name'],
-                    'ipVersion': d['ipVersion'],
-                    'startIPAddress': d['startIPAddress'],
-                    'endIPAddress': d['endIPAddress']
-                }
-            }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['network'])
-        }
-        self.printResultInfo(result)
-        IPRange.write(self.role, result)
-     
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
-     
-    def _sync(self):
-        srcs = IPRange.read('src')
-        tgts = IPRange.read('tgt')
-        networks = FabricNetwork.read(self.role)
-        completed = 0
-        for src_link in srcs['link']:
-            src = srcs['objs'][src_link]
-            for id, tgt in tgts['objs'].items():
-                if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount'] and src['network'] == tgt['network']:
-                    src['payload']['fabricNetworkId'] = tgt['networkId']
-                    try: self.patch('/iaas/api/network-ip-ranges/' + id, src['payload'])
-                    except:
-                        if self._debug: print('  ! error: could not update ip range [%s / %s]' % (src['name'], src['cloudAccount']))
-                    else:
-                        if self._debug: print('  * update ip range [%s / %s]' % (src['name'], src['cloudAccount']))
-                        completed += 1
-                    break
-            else:
-                for nid, network in networks['objs'].items():
-                    if src['network'] == network['name'] and src['cloudAccount'] == network['cloudAccount']:
-                        src['payload']['fabricNetworkId'] = nid
-                        try: self.post('/iaas/api/network-ip-ranges', src['payload'])
-                        except:
-                            if self._debug: print('  ! error: could not create ip range [%s / %s]' % (src['name'], src['cloudAccount']))
-                        else:
-                            if self._debug: print('  * create ip range [%s / %s]' % (src['name'], src['cloudAccount']))
-                            completed += 1
-                        break
-                else:
-                    if self._debug: print('  ! error: could not find fabric network of ip range [%s]' % src['name'])
-        print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-     
-    def sync_80(self): self._sync()
-    def sync_81(self): self._sync()
-    def sync_82(self): self._sync()
-
-
-@register_object
-class NetworkProfile(VRAOBJ):
-
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-
-    def _dump(self):
-        data = self.get('/iaas/api/network-profiles?$limit=10000')
-        self.printDataInfo(data)
-        regions = CloudRegion.read(self.role)
-        networks = FabricNetwork.read(self.role)
-        objs = {}
-        for d in data['content']:
-            if 'fabric-networks' not in d['_links']: continue;
-            region_id = d['_links']['region']['href'].split('regions/')[1]
-            region = regions['objs'][region_id]
-            fabricNetworkIds = []
-            for nid in d['_links']['fabric-networks']['hrefs']:
-                network = networks['objs'][nid.split('fabric-networks/')[1]]
-                fabricNetworkIds.append({
-                    'name': network['name'],
-                    'cloudAccount': network['cloudAccount']
-                })
-            obj = {
-                'name': d['name'],
-                'cloudAccountId': region['cloudAccountId'],
-                'cloudAccount': region['cloudAccount'],
-                'regionId': region_id,
-                'region': region['name'],
-                'payload': {
-                    'name': d['name'],
-                    'description': d['description'] if 'description' in d else '',
-                    'isolationType': d['isolationType'] if 'isolationType' in d else '',
-                    'fabricNetworkIds': fabricNetworkIds,
-                    'customProperties': d['customProperties'] if 'customProperties' in d else {},
-                    'tags': d['tags'] if 'tags' in d else []
-                    # 'securityGroupIds': []
-                    # 'loadBalancerIds': []
-                }
-            }
-            if 'isolationNetworkDomainId' in d: obj['payload']['isolationNetworkDomainId'] = d['isolationNetworkDomainId']
-            if 'isolationNetworkDomainCIDR' in d: obj['payload']['isolationNetworkDomainCIDR'] = d['isolationNetworkDomainCIDR']
-            if 'isolationExternalFabricNetworkId' in d: obj['payload']['isolationExternalFabricNetworkId'] = d['isolationExternalFabricNetworkId']
-            if 'isolatedNetworkCIDRPrefix' in d: obj['payload']['isolatedNetworkCIDRPrefix'] = d['isolatedNetworkCIDRPrefix']
-            objs[d['id']] = obj
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
-        }
-        self.printResultInfo(result)
-        NetworkProfile.write(self.role, result)
-
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
-
-    def _sync(self):
-        srcs = NetworkProfile.read('src')
-        tgts = NetworkProfile.read('tgt')
-        ca = CloudAccount.read(self.role).values()
-        regions = CloudRegion.read(self.role)
-        networks = FabricNetwork.read(self.role)
-        completed = 0
-        for src_link in srcs['link']:
-            src = srcs['objs'][src_link]
-            if src['cloudAccount'] not in ca:
-                if self._debug: print('  ! error: could not find cloud account of network profile [%s / %s]' % (src['name'], src['cloudAccount']))
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            t = self.findDN(dn)
+            if t == None:
+                if isDebug(): print('  ! could not find fabric compute dn [%s]' % dn)
                 continue
-            fabricNetworkIds = []
-            for n in src['payload']['fabricNetworkIds']:
-                for nid, network in networks['objs'].items():
-                    if n['name'] == network['name'] and n['cloudAccount'] == network['cloudAccount']:
-                        fabricNetworkIds.append(nid)
-                        break
-                else:
-                    if self._debug: print('  ! error: could not find fabric network of network profile [%s / %s]' % (src['name'], src['cloudAccount']))
-            src['payload']['fabricNetworkIds'] = fabricNetworkIds
-            for id, tgt in tgts['objs'].items():
-                if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount'] and src['region'] == tgt['region']:
-                    src['payload']['regionId'] = tgt['regionId']
-                    try: self.patch('/iaas/api/network-profiles/' + id, src['payload'])
-                    except:
-                        if self._debug: print('  ! error: could not create network profile [%s / %s]' % (src['name'], src['cloudAccount']))
-                    else:
-                        if self._debug: print('  * update network profile [%s / %s]' % (src['name'], src['cloudAccount']))
-                        completed += 1
-                    break
+            try: vra.patch('/iaas/api/fabric-computes/' + t['id'], s['payload'])
+            except Exception as e:
+                if isDebug(): print('  ! could not set tag to fabric compute [%s]' % dn)
             else:
-                cloud_account_name = src['cloudAccount']
-                region_name = src['region']
-                for rid, region in regions['objs'].items():
-                    if region['name'] == region_name and region['cloudAccount'] == cloud_account_name:
-                        src['payload']['regionId'] = rid
-                        try: self.post('/iaas/api/network-profiles', src['payload'])
-                        except:
-                            if self._debug: print('  ! error: could not create network profile [%s / %s]' % (src['name'], src['cloudAccount']))
-                        else:
-                            if self._debug: print('  + create network profile [%s / %s]' % (src['name'], src['cloudAccount']))
-                            completed += 1
-                        break
-                else:
-                    if self._debug: print('  ! error: could not find region of network profile [%s / %s]' % (src['name'], src['cloudAccount']))
-        print(' src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-
-    def sync_80(self): self._sync()
-    def sync_81(self): self._sync()
-    def sync_82(self): self._sync()
+                if isDebug(): print('  * set tag to fabric compute [%s]' % dn)
+                completed += 1
+        return completed
 
 
 @register_object
-class FabricDatastore(VRAOBJ):
-
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-
-    def _dump(self):
-        data = self.get('/iaas/api/fabric-vsphere-datastores?$limit=10000')
-        self.printDataInfo(data)
-        ca = CloudAccount.read(self.role)
-        regions = CloudRegion.read(self.role)
-        objs = {}
+class CloudZone(Object):
+    
+    RELATIONS = [CloudRegion]
+    LOAD_URL = '/iaas/api/zones?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, regions):
+        map, ids, dns, count = {}, [], {}, 0
+        if self.ver == 80: self.delimeter = 'endpoints/'
+        else: self.delimeter = 'cloud-accounts/'
         for d in data['content']:
-            cloud_account_id = d['_links']['cloud-accounts']['hrefs'][0].split('cloud-accounts/')[1]
-            region_id = d['_links']['region']['href'].split('regions/')[1]
-            objs[d['id']] = {
-                'name': d['name'],
-                'cloudAccountId': cloud_account_id,
-                'cloudAccount': ca[cloud_account_id],
-                'regionId': region_id,
-                'region': regions['objs'][region_id]['name']
+            id = d['id']
+            name = d['name']
+            region = regions.findID(d['_links']['region']['href'].split('regions/')[1])
+            ca = region['ca']
+            rg = region['name']
+            dn = ca + '/' + rg + '/' + name
+            # Payload ##############################
+            payload = {'name': name}
+            if 'description' in d: payload['description'] = d['description']
+            if 'placementPolicy' in d: payload['placementPolicy'] = d['placementPolicy']
+            if 'folder' in d: payload['folder'] = d['folder']
+            if 'tagsToMatch' in d: payload['tagsToMatch'] = d['tagsToMatch']
+            if 'tags' in d: payload['tags'] = d['tags']
+            if 'customProperties' in d: payload['customProperties'] = d['customProperties']
+            # Payload ##############################
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
+                'payload': payload
             }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
-        }
-        self.printResultInfo(result)
-        FabricDatastore.write(self.role, result)
-
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
-
-
-@register_object
-class DatastoreProfile(VRAOBJ):
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
     
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-    
-    def _dump(self):
-        data = self.getUerp('/provisioning/mgmt/storage-profile?expand&$top=10000')
-        profiles = self.get('/iaas/api/storage-profiles-vsphere?$limit=10000')
-        self.printDataInfo(profiles)
-        profiles = profiles['content']
-        ca = CloudAccount.read(self.role)
-        regions = CloudRegion.read(self.role)
-        datastores = FabricDatastore.read(self.role)
-        objs = {}
-        for d in data['documents'].values():
-            cloud_account_id = d['endpointLinks'][0].split('endpoints/')[1]
-            cloud_account_name = ca[cloud_account_id]
-            region_name = d['regionId']
-            for rid, region in regions['objs'].items():
-                if region['name'] == region_name and region['cloudAccountId'] == cloud_account_id:
-                    region_id = rid
-                    break
-            else:
-                if self._debug: print('  ! error: could not find region of fabric datastore profile [%s / %s]' % (d['name'], cloud_account_name))
-                continue
-            for s in d['storageItems']:
-                for p in profiles:
-                    if p['name'] == s['name'] and p['cloudAccountId'] == cloud_account_id and p['_links']['region']['href'].split('regions/')[1] == region_id:
-                        tags = p['tags'] if 'tags' in p else []
-                        break
-                if 'storageDescriptionLink' in s:
-                    datastore_id = s['storageDescriptionLink'].split('storage-descriptions/')[1]
-                    datastore_name = datastores['objs'][datastore_id]['name']
-                    objs[s['id']] = {
-                        'name': s['name'],
-                        'cloudAccountId': cloud_account_id,
-                        'cloudAccount': cloud_account_name,
-                        'regionId': region_id,
-                        'region': region_name,
-                        'datastoreId': datastore_id,
-                        'datastore': datastore_name,
-                        'tags': tags,
-                        'payload': {
-                            'name': s['name'],
-                            'cloudAccountType': 'vsphere',
-                            'desc': s['description'] if 'description' in s else '',
-                            'defaultItem': s['defaultItem'],
-                            'supportsEncryption': s['supportsEncryption'] if 'supportsEncryption' in s else False,
-                            'customProperties': s['diskProperties'] if 'diskProperties' in s else {},
-                        }
-                    }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
-        }
-        self.printResultInfo(result)
-        DatastoreProfile.write(self.role, result)
-        
-
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
-
-    def _sync(self):
-        srcs = DatastoreProfile.read('src')
-        tgts = DatastoreProfile.read('tgt')
-        regions = CloudRegion.read(self.role)
-        datastores = FabricDatastore.read(self.role)
+    def sync(self, vra, src, regions):
         completed = 0
-        for src_link in srcs['link']:
-            src = srcs['objs'][src_link]
-            for id, tgt in tgts['objs'].items():
-                if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount'] and src['region'] == tgt['region'] and src['datastore'] == tgt['datastore']:
-                    src['payload']['provisioningRegionLink'] = '/provisioning/resources/' + tgt['regionId']
-                    src['payload']['storageDescriptionLink'] = '/resources/storage-descriptions/' + tgt['datastoreId']
-                    try:
-                        res = self.post('/provisioning/uerp/provisioning/mgmt/tag-assignment', {'tagsToAssign': src['tags']})
-                        src['payload']['tagLinks'] = res['tagLinks'] if 'tagLinks' in res else []
-                        self.put('/provisioning/uerp/provisioning/mgmt/flat-storage-profile/' + id, src['payload'])
-                    except:
-                        if self._debug: print('  ! error: could not update datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            region = regions.findDN(s['ca'] + '/' + s['rg'])
+            if region:
+                s['payload']['regionId'] = region['id']
+                t = self.findDN(dn)
+                if t == None: # Create
+                    try: self.post('/iaas/api/zones', s['payload'])
+                    except Exception as e:
+                        if isDebug(): print('  ! could not create cloud zone [%s]' % dn)
                     else:
-                        if self._debug: print('  * update datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
+                        if isDebug(): print('  + create cloud zone [%s]' % dn)
                         completed += 1
-                    break
+                else: # Update
+                    try: vra.patch('/iaas/api/zones/' + t['id'], s['payload'])
+                    except:
+                        if isDebug(): print('  ! could not update cloud zone [%s]' % dn)
+                    else:
+                        if isDebug(): print('  * update cloud zone [%s]' % dn)
+                        completed += 1
             else:
-                cloud_account_name = src['cloudAccount']
-                region_name = src['region']
-                for rid, region in regions['objs'].items():
-                    if region['name'] == region_name and region['cloudAccount'] == cloud_account_name:
-                        src['payload']['provisioningRegionLink'] = '/provisioning/resources/' + rid
-                        datastore_name = src['datastore']
-                        for did, datastore in datastores['objs'].items():
-                            if datastore['name'] == datastore_name and datastore['cloudAccount'] == cloud_account_name and datastore['region'] == region_name:
-                                src['payload']['storageDescriptionLink'] = '/resources/storage-descriptions/' + did
-                                try:
-                                    res = self.post('/provisioning/uerp/provisioning/mgmt/tag-assignment', {'tagsToAssign': src['tags']})
-                                    src['payload']['tagLinks'] = res['tagLinks'] if 'tagLinks' in res else []
-                                    res = self.post('/provisioning/uerp/provisioning/mgmt/flat-storage-profile', src['payload'])
-                                except:
-                                    if self._debug: print('  ! error: could not create datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
-                                else:
-                                    if self._debug: print('  + create datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
-                                    completed += 1
-                                break
-                        else:
-                            if self._debug: print('  ! error: could not find datastore of datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
-                        break
-                else:
-                    if self._debug: print('  ! error: could not find region of datastore profile [%s / %s]' % (src['name'], src['cloudAccount']))
-        print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-  
-    def sync_80(self): self._sync()
-    def sync_81(self): self._sync()
-    def sync_82(self): self._sync()
+                if isDebug(): print('  ! could not find region of cloud zone [%s]' % dn)
+        return completed
 
-
-# @register_object
-# class FabricDatastorevSphere(VRAOBJ):
-#   
-#     def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
-#   
-#     def _dump(self):
-#         data = self.get('/iaas/api/storage-profiles-vsphere?$limit=10000')
-#         self.printDataInfo(data)
-#         regions = CloudRegion.read(self.role)
-#         datastores = FabricDatastore.read(self.role)
-#         objs = {}
-#         for d in data['content']:
-#             region_id = d['_links']['region']['href'].split('regions/')[1]
-#             region = regions['objs'][region_id]
-#             datastore_id = d['_links']['datastore']['href'].split('datastores/')[1]
-#             datastore = datastores['objs'][datastore_id]
-#             objs[d['id']] = {
-#                 'name': d['name'],
-#                 'cloudAccountId': region['cloudAccountId'],
-#                 'cloudAccount': region['cloudAccount'],
-#                 'regionId': region_id,
-#                 'region': region['name'],
-#                 'datastoreId': datastore_id,
-#                 'datastore': datastore['name'],
-#                 'payload': {
-#                     'name': d['name'],
-#                     'description': d['description'] if 'description' in d else '',
-#                     'defaultItem': d['defaultItem'] if 'defaultItem' in d else False,
-#                     'sharesLevel': d['sharesLevel'] if 'sharesLevel' in d else '',
-#                     'provisioningType': d['provisioningType'] if 'provisioningType' in d else '',
-#                     'limitIops': d['limitIops'] if 'limitIops' in d else '',
-#                     'shares': d['shares'] if 'shares' in d else '',
-#                     'diskMode': d['diskMode'] if 'diskMode' in d else '',
-#                     'supportsEncryption': d['supportsEncryption'] if 'supportsEncryption' in d else '',
-#                     'tags': d['tags'] if 'tags' in d else []
-#                     # 'storagePolicyId': ''
-#                 }
-#             }
-#         result = {
-#             'objs': objs,
-#             'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
-#         }
-#         FabricDatastorevSphere.write(self.role, result)
-#   
-#     def dump_80(self): self._dump()
-#     def dump_81(self): self._dump()
-#     def dump_82(self): self._dump()
-#   
-#     def _sync(self):
-#         srcs = FabricDatastorevSphere.read('src')
-#         tgts = FabricDatastorevSphere.read('tgt')
-#         regions = CloudRegion.read(self.role)
-#         datastores = FabricDatastore.read(self.role)
-#         completed = 0
-#         for src_link in srcs['link']:
-#             src = srcs['objs'][src_link]
-#             for id, tgt in tgts['objs'].items():
-#                 if src['name'] == tgt['name'] and src['cloudAccount'] == tgt['cloudAccount'] and src['region'] == tgt['region'] and src['datastore'] == tgt['datastore']:
-#                     src['payload']['regionId'] = tgt['regionId']
-#                     src['payload']['datastoreId'] = tgt['datastoreId']
-#                     try: self.patch('/iaas/api/storage-profiles-vsphere/' + id, src['payload'])
-#                     except:
-#                         if self._debug: print('  ! error: could not update fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-#                     else:
-#                         if self._debug: print('  * update fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-#                         completed += 1
-#                     break
-#             else:
-#                 cloud_account_name = src['cloudAccount']
-#                 region_name = src['region']
-#                 for rid, region in regions['objs'].items():
-#                     if region['name'] == region_name and region['cloudAccount'] == cloud_account_name:
-#                         src['payload']['regionId'] = rid
-#                         datastore_name = src['datastore']
-#                         for did, datastore in datastores['objs'].items():
-#                             if datastore['name'] == datastore_name and datastore['cloudAccount'] == cloud_account_name and datastore['region'] == region_name:
-#                                 src['payload']['datastoreId'] = did
-#                                 try: self.post('/iaas/api/storage-profiles-vsphere', src['payload'])
-#                                 except:
-#                                     if self._debug: print('  ! error: could not create fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-#                                 else:
-#                                     if self._debug: print('  + create fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-#                                     completed += 1
-#                                 break
-#                         else:
-#                             if self._debug: print('  ! error: could not find datastore of fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-#                         break
-#                 else:
-#                     if self._debug: print('  ! error: could not find region of fabric datastore vsphere [%s / %s]' % (src['name'], src['cloudAccount']))
-#         print('  src[ %d ] : tgt[ %d ] = sync[ %d ] ' % (len(srcs['link']), len(tgts['link']), completed))
-#   
-#     def sync_80(self): self._sync()
-#     def sync_81(self): self._sync()
-#     def sync_82(self): self._sync()
 
 @register_object
-class FabricImage(VRAOBJ):
+class NetworkDomain(Object):
     
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
+    RELATIONS = [CloudAccount]
+    LOAD_URL = '/iaas/api/network-domains?$limit=10000'
     
-    def _dump(self):
-        data = self.getUerp('/provisioning/mgmt/image?expand&$top=10000&$filter=(endpointType ne \'aws\')')
-        self.printDataInfo(data)
-        ca = CloudAccount.read(self.role)
-        regions = CloudRegion.read(self.role)
-        objs = {}
-        for d in data['documents'].values():
-            cloud_account_id = d['endpointLink'].split('endpoints/')[1]
-            cloud_account_name = ca[cloud_account_id]
-            region_name = d['regionId']
-            for rid, region in regions['objs'].items():
-                if region['name'] == region_name and region['cloudAccountId'] == cloud_account_id:
-                    region_id = rid
-                    break
-            else:
-                if self._debug: print('  ! error: could not find region of fabric image [%s / %s]' % (d['name'], cloud_account_name))
-                continue
-            objs[d['id']] = {
-                'name': d['name'],
-                'cloudAccountId': cloud_account_id,
-                'cloudAccount': cloud_account_name,
-                'regionId': region_id,
-                'region': region_name,
-                'moId': d['customProperties']['__moref']
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, accounts):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            ca = accounts.findID(d['_links']['cloud-accounts']['hrefs'][0].split('cloud-accounts/')[1])
+            dn = ca + '/' + name
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'dn': dn
             }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
-        }
-        self.printResultInfo(result)
-        FabricImage.write(self.role, result)
-        
-
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+    
 
 @register_object
-class ImageMap(VRAOBJ):
+class FabricNetwork(Object):
     
-    def __init__(self, src_vra, tgt_vra): VRAOBJ.__init__(self, src_vra, tgt_vra)
+    RELATIONS = [CloudAccount]
+    LOAD_URL = '/iaas/api/fabric-networks?$limit=10000'
     
-    def _dump(self):
-        data = self.getUerp('/provisioning/mgmt/image-names?view=list')
-        print('  %s : %-4d' % (self.role, len(data)), end='')
-        ca = CloudAccount.read(self.role)
-        regions = CloudRegion.read(self.role)
-        images = FabricImage.read(self.role)
-        objs = {}
-        for d in data.values():
-            image_list = []
-            for i in d['imageMapping'].values():
-                image_id = i['imageLink'].split('images/')[1]
-                image_list.append(images['objs'][image_id])
-#             objs[d['id']] = {
-#                 'name': d['name']
-#                 'payload'
-#             }
-        result = {
-            'objs': objs,
-            'link': sorted(objs.keys(), key=lambda x: objs[x]['name'] + objs[x]['cloudAccount'] + objs[x]['region'])
-        }
-        self.printResultInfo(result)
-        ImageMap.write(self.role, result)
-        
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, accounts):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            ca = accounts.findID(d['_links']['cloud-accounts']['hrefs'][0].split('cloud-accounts/')[1])
+            dn = ca + '/' + name
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'dn': dn
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
 
-    def dump_80(self): self._dump()
-    def dump_81(self): self._dump()
-    def dump_82(self): self._dump()
+
+@register_object
+class FabricNetworkvSphere(Object):
+    
+    RELATIONS = [CloudAccount]
+    LOAD_URL = '/iaas/api/fabric-networks-vsphere?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, accounts):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            ca = accounts.findID(d['_links']['cloud-accounts']['hrefs'][0].split('cloud-accounts/')[1])
+            dn = ca + '/' + name
+            # Payload ##############################
+            payload = {}
+            if 'cidr' in d: payload['cidr'] = d['cidr']
+            if 'ipv6Cidr' in d: payload['ipv6Cidr'] = d['ipv6Cidr']
+            if 'isDefault' in d: payload['isDefault'] = d['isDefault']
+            if 'domain' in d: payload['domain'] = d['domain']
+            if 'defaultGateway' in d: payload['defaultGateway'] = d['defaultGateway']
+            if 'defaultIpv6Gateway' in d: payload['defaultIpv6Gateway'] = d['defaultIpv6Gateway']
+            if 'dnsServerAddresses' in d: payload['dnsServerAddresses'] = d['dnsServerAddresses']
+            if 'dnsSearchDomains' in d: payload['dnsSearchDomains'] = d['dnsSearchDomains']
+            if 'tags' in d: payload['tags'] = d['tags']
+            # Payload ##############################
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'dn': dn,
+                'payload': payload
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+    
+    def sync(self, vra, src, accounts):
+        completed = 0
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            t = self.findDN(dn)
+            if t:
+                try: vra.patch('/iaas/api/fabric-networks-vsphere/' + t['id'], s['payload'])
+                except Exception as e:
+                    print(str(e))
+                    if isDebug(): print('  ! could not update to fabric network vsphere [%s]' % dn)
+                else:
+                    if isDebug(): print('  * update fabric network vsphere [%s]' % dn)
+                    completed += 1
+            else:
+                if isDebug(): print('  ! could not find fabric network vsphere [%s]' % dn)
+        return completed
+    
+
+@register_object
+class IPRange(Object):
+    
+    RELATIONS = [FabricNetwork]
+    LOAD_URL = '/iaas/api/network-ip-ranges?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, networks):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            network = networks.findID(d['_links']['fabric-network']['href'].split('fabric-networks/')[1])
+            ca = network['ca']
+            net = network['name']
+            dn = ca + '/' + net + '/' + name
+            # Payload ##############################
+            payload = {'name': name}
+            if 'ipVersion' in d: payload['ipVersion'] = d['ipVersion']
+            if 'startIPAddress' in d: payload['startIPAddress'] = d['startIPAddress']
+            if 'endIPAddress' in d: payload['endIPAddress'] = d['endIPAddress']
+            # Payload ##############################
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'net': net, 'dn': dn,
+                'payload': payload
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+    
+    def sync(self, vra, src, networks):
+        completed = 0
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            network = networks.findDN(s['ca'] + '/' + s['net'])
+            if network:
+                s['payload']['fabricNetworkId'] = network['id']
+                t = self.findDN(dn)
+                if t == None: # Create
+                    try: self.post('/iaas/api/network-ip-ranges', s['payload'])
+                    except Exception as e:
+                        if isDebug(): print('  ! could not create ip range [%s]' % dn)
+                    else:
+                        if isDebug(): print('  + create ip range [%s]' % dn)
+                        completed += 1
+                else: # Update
+                    try: vra.patch('/iaas/api/network-ip-ranges/' + t['id'], s['payload'])
+                    except:
+                        if isDebug(): print('  ! could not update ip range [%s]' % dn)
+                    else:
+                        if isDebug(): print('  * update ip range [%s]' % dn)
+                        completed += 1
+            else:
+                if isDebug(): print('  ! could not find network of ip range [%s]' % dn)
+        return completed
+
+
+@register_object
+class NetworkProfile(Object):
+    
+    RELATIONS = [CloudRegion, NetworkDomain, FabricNetwork]
+    LOAD_URL = '/iaas/api/network-profiles?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, regions, domains, networks):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            if 'fabric-networks' not in d['_links'] and 'network-domains' not in d['_links']: continue;
+            id = d['id']
+            name = d['name']
+            region = regions.findID(d['_links']['region']['href'].split('regions/')[1])
+            ca = region['ca']
+            rg = region['name']
+            dn = ca + '/' + rg + '/' + name
+            # Payload ##############################
+            dom_dn = None
+            if 'network-domains' in d['_links']:
+                dom_dn = domains.findID(d['_links']['network-domains']['href'].split('network-domains/')[1])['dn']
+            net_dns = []
+            if 'fabric-networks' in d['_links']:
+                for net_id in d['_links']['fabric-networks']['hrefs']:
+                    net_dns.append(networks.findID(net_id.split('fabric-networks/')[1])['dn'])
+            exn_dn = None
+            if 'isolated-external-fabric-networks' in d['_links']:
+                exn_dn = networks.findID(d['_links']['isolated-external-fabric-networks']['href'].split('fabric-networks/')[1])['dn']
+            payload = {'name': name}
+            if 'description' in d: payload['description'] = d['description']
+            if 'isolationType' in d: payload['isolationType'] = d['isolationType']
+#             if 'customProperties' in d: payload['customProperties'] = d['customProperties']
+            if 'tags' in d: payload['tags'] = d['tags']
+            if 'isolationNetworkDomainCIDR' in d: payload['isolationNetworkDomainCIDR'] = d['isolationNetworkDomainCIDR']
+            if 'isolatedNetworkCIDRPrefix' in d: payload['isolatedNetworkCIDRPrefix'] = d['isolatedNetworkCIDRPrefix']
+            # Payload ##############################
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
+                'dom_dn': dom_dn,
+                'net_dns': net_dns,
+                'exn_dn': exn_dn,
+                'payload': payload
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+    
+    def sync(self, vra, src, regions, domains, networks):
+        completed = 0
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            region = regions.findDN(s['ca'] + '/' + s['rg'])
+            if region:
+                s['payload']['regionId'] = region['id']
+                fabricNetworkIds = []
+                for net_dn in s['net_dns']:
+                    network = networks.findDN(net_dn)
+                    if network:
+                        fabricNetworkIds.append(network['id'])
+                    else:
+                        if isDebug(): print('  ! could not find network of network profile [%s]' % dn)
+                s['payload']['fabricNetworkIds'] = fabricNetworkIds
+                if s['dom_dn']: s['payload']['isolationNetworkDomainId'] = domains.findDN(s['dom_dn'])['id']
+                if s['exn_dn']: s['payload']['isolationExternalFabricNetworkId'] = networks.findDN(s['exn_dn'])['id']
+                t = self.findDN(dn)
+                if t == None: # Create
+                    try: self.post('/iaas/api/network-profiles', s['payload'])
+                    except Exception as e:
+                        if isDebug(): print('  ! could not create network profile [%s]' % dn)
+                    else:
+                        if isDebug(): print('  + create network profile [%s]' % dn)
+                        completed += 1
+                else: # Update
+                    try: vra.patch('/iaas/api/network-profiles/' + t['id'], s['payload'])
+                    except:
+                        if isDebug(): print('  ! could not update network profile [%s]' % dn)
+                    else:
+                        if isDebug(): print('  * update network profile [%s]' % dn)
+                        completed += 1
+            else:
+                if isDebug(): print('  ! could not find region of network profile [%s]' % dn)
+        return completed
+
+
+@register_object
+class FabricDatastore(Object): # storage-descriptions
+    
+    RELATIONS = [CloudRegion]
+    LOAD_URL = '/iaas/api/fabric-vsphere-datastores?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, regions):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            region = regions.findID(d['_links']['region']['href'].split('regions/')[1])
+            ca = region['ca']
+            rg = region['name']
+            dn = ca + '/' + rg + '/' + name
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+
+
+@register_object
+class StorageProfilevSphere(Object):
+    
+    RELATIONS = [CloudRegion]
+    LOAD_URL = '/iaas/api/storage-profiles-vsphere?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, regions):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            region = regions.findID(d['_links']['region']['href'].split('regions/')[1])
+            ca = region['ca']
+            rg = region['name']
+            dn = ca + '/' + rg + '/' + name
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
+                'tags': d['tags'] if 'tags' in d else []
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+
+
+@register_object
+class StorageProfile(Object):
+    
+    RELATIONS = [CloudAccount, CloudRegion, StorageProfilevSphere, FabricDatastore]
+    LOAD_URL = '/provisioning/mgmt/storage-profile?expand&$top=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, accounts, regions, vsprofs, datastores):
+        map, ids, dns, count = {}, [], {}, 0
+        for sp in data['documents'].values():
+            ca = accounts.findID(sp['endpointLinks'][0].split('endpoints/')[1])
+            rg = sp['regionId']
+            rg_dn = ca + '/' + rg
+            for d in sp['storageItems']:
+                if 'storageDescriptionLink' not in d: continue
+                id = d['id']
+                name = d['name']
+                dn = ca + '/' + rg + '/' + name
+                # Payload ##############################
+                tags = vsprofs.findDN(dn)['tags']
+                stg_dn = datastores.findID(d['storageDescriptionLink'].split('storage-descriptions/')[1])['dn']
+                payload = {'name': name, 'cloudAccountType': 'vsphere'}
+                if 'description' in d: payload['desc'] = d['description']
+                if 'defaultItem' in d: payload['defaultItem'] = d['defaultItem']
+                if 'supportsEncryption' in d: payload['supportsEncryption'] = d['supportsEncryption']
+                if 'diskProperties' in d: payload['customProperties'] = d['diskProperties']
+                # Payload ##############################
+                map[id] = {
+                    'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
+                    'rg_dn': rg_dn,
+                    'stg_dn': stg_dn,
+                    'tags': tags,
+                    'payload': payload
+                }
+                ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+    
+    def sync(self, vra, src, accounts, regions, vsprofs, datastores):
+        completed = 0
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            region = regions.findDN(s['rg_dn'])
+            if region:
+                s['payload']['provisioningRegionLink'] = '/provisioning/resources/' + region['id']
+                s['payload']['storageDescriptionLink'] = '/resources/storage-descriptions/' + datastores.findDN(s['stg_dn'])['id']
+                if s['tags']:
+                    r = vra.post('/provisioning/uerp/provisioning/mgmt/tag-assignment', {'tagsToAssign': s['tags']})
+                    s['payload']['tagLinks'] = r['tagLinks'] if 'tagLinks' in r else []
+                t = self.findDN(dn)
+                if t == None: # Create
+                    try: vra.post('/provisioning/uerp/provisioning/mgmt/flat-storage-profile', s['payload'])
+                    except Exception as e:
+                        if isDebug(): print('  ! could not create storage profile [%s]' % dn)
+                    else:
+                        if isDebug(): print('  + create storage profile [%s]' % dn)
+                        completed += 1
+                else: # Update
+                    try: vra.put('/provisioning/uerp/provisioning/mgmt/flat-storage-profile/' + t['id'], s['payload'])
+                    except:
+                        if isDebug(): print('  ! could not update storage profile [%s]' % dn)
+                    else:
+                        if isDebug(): print('  * update storage profile [%s]' % dn)
+                        completed += 1
+            else:
+                if isDebug(): print('  ! could not find region of storage profile [%s]' % dn)
+        return completed
+
+
+@register_object
+class FabricImage(Object):
+    
+    RELATIONS = [CloudAccount]
+    LOAD_URL = '/provisioning/uerp/provisioning/mgmt/image?expand&$top=10000&$filter=(endpointType ne \'aws\')'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, accounts):
+        map, ids, dns, count = {}, [], {}, 0
+        for id, d in data['documents'].items():
+            id = id.split('images/')[1]
+            name = d['name']
+            ca = accounts.findID(d['endpointLink'].split('endpoints/')[1])
+            rg = d['regionId']
+            dn = ca + '/' + rg + '/' + name
+            mo = d['customProperties']['__moref']
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn, 'mo': mo
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+
+
+@register_object
+class ImageProfile(Object):
+    
+    RELATIONS = [CloudRegion, FabricImage]
+    LOAD_URL = '/iaas/api/image-profiles'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, regions, images):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            region = regions.findID(d['_links']['region']['href'].split('regions/')[1])
+            ca = region['ca']
+            rg = region['name']
+            # Just vSphere
+            if 'Datacenter' not in rg: continue
+            dn = region['dn']
+            # Payload ##############################
+            mappings = {}
+            for key, image in d['imageMappings']['mapping'].items():
+                mappings[key] = images.findID(image['id'])['dn']
+            payload = {'name': name}
+            if 'description' in d: payload['description'] = d['description']
+            # Payload ##############################
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
+                'mappings': mappings,
+                'payload': payload
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+    
+    def sync(self, vra, src, regions, images):
+        completed = 0
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            region = regions.findDN(s['dn'])
+            if region:
+                s['payload']['regionId'] = region['id']
+                mappings = {}
+                for key, img_dn in s['mappings'].items():
+                    image = images.findDN(img_dn)
+                    mappings[key] = {'id': image['id'], 'name': image['name']}
+                s['payload']['imageMapping'] = mappings
+                t = self.findDN(dn)
+                if t == None: # Create
+                    try: vra.post('/iaas/api/image-profiles', s['payload'])
+                    except Exception as e:
+                        if isDebug(): print('  ! could not create image profile [%s]' % dn)
+                    else:
+                        if isDebug(): print('  + create image profile [%s]' % dn)
+                        completed += 1
+                else: # Update
+                    try: vra.patch('/iaas/api/image-profiles/' + t['id'], s['payload'])
+                    except:
+                        if isDebug(): print('  ! could not update image profile [%s]' % dn)
+                    else:
+                        if isDebug(): print('  * update image profile [%s]' % dn)
+                        completed += 1
+            else:
+                if isDebug(): print('  ! could not find region of image profile [%s]' % dn)
+        return completed
+    
+    
+@register_object
+class Project(Object):
+    
+    RELATIONS = [CloudZone]
+    LOAD_URL = '/iaas/api/projects?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, zones):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            dn = name
+            # Payload ##############################
+            for z in d['zones']: z['zoneId'] = zones.findID(z['zoneId'])['dn']
+            payload = {'name': name}
+            if 'description' in d: payload['description'] = d['description']
+            if 'administrators' in d: payload['administrators'] = d['administrators']
+            if 'members' in d: payload['members'] = d['members']
+            if 'viewers' in d: payload['viewers'] = d['viewers']
+            if 'machineNamingTemplate' in d: payload['machineNamingTemplate'] = d['machineNamingTemplate']
+            if 'sharedResources' in d: payload['sharedResources'] = d['sharedResources']
+            if 'operationTimeout' in d: payload['operationTimeout'] = d['operationTimeout']
+            if 'constraints' in d: payload['constraints'] = d['constraints']
+            if 'zones' in d: payload['zoneAssignmentConfigurations'] = d['zones']
+            # Payload ##############################
+            map[id] = {
+                'id': id, 'name': name, 'dn': dn,
+                'payload': payload
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+    
+    def sync(self, vra, src, zones):
+        completed = 0
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            for z in s['payload']['zoneAssignmentConfigurations']: z['zoneId'] = zones.findDN(z['zoneId'])['id']
+            t = self.findDN(dn)
+            if t == None: # Create
+                try: vra.post('/iaas/api/projects', s['payload'])
+                except Exception as e:
+                    if isDebug(): print('  ! could not create project [%s]' % dn)
+                else:
+                    if isDebug(): print('  + create project [%s]' % dn)
+                    completed += 1
+            else: # Update
+                try: vra.patch('/iaas/api/projects/' + t['id'], s['payload'])
+                except:
+                    if isDebug(): print('  ! could not update project [%s]' % dn)
+                else:
+                    if isDebug(): print('  * update project [%s]' % dn)
+                    completed += 1
+        return completed
+
 
