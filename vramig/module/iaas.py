@@ -642,34 +642,46 @@ class FabricImage(Object):
 class ImageProfile(Object):
     
     RELATIONS = [CloudRegion, FabricImage]
-    LOAD_URL = '/iaas/api/image-profiles'
+    LOAD_URL = '/profisioning/uerp/provisioning/mgmt/image-names?view=list'
     
     def __init__(self): Object.__init__(self)
     
     def parse(self, data, regions, images):
         map, ids, dns, count = {}, [], {}, 0
-        for d in data['content']:
-            id = d['id']
-            name = d['name']
-            region = regions.findID(d['_links']['region']['href'].split('regions/')[1])
-            ca = region['ca']
-            rg = region['name']
-            # Just vSphere
-            if 'Datacenter' not in rg: continue
-            dn = region['dn']
-            # Payload ##############################
-            mappings = {}
-            for key, image in d['imageMappings']['mapping'].items():
-                mappings[key] = images.findID(image['id'])['dn']
-            payload = {'name': dn}
-            if 'description' in d: payload['description'] = d['description']
-            # Payload ##############################
-            map[id] = {
-                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
-                'mappings': mappings,
-                'payload': payload
-            }
-            ids.append(id); dns[dn] = id; count += 1
+        if self.ver in [80, 81]: self.delimeter = 'provisioning-regions/'
+        else: self.delimeter = 'resources/'
+        if self.role == 'tgt':
+            imgprofs = self.get('/iaas/api/image-profiles?limit=10000')['content']
+        for d in data:
+            for id, mig in d['imageMapping'].items():
+                region_id = id.split(self.delimeter)[1]
+                img_id = img['imageLink'].split('images/')[1]
+                image = images.findID(img_id)
+                if self.role == 'tgt':
+                    for imgprof in imgprofs:
+                        if imgprof['_links']['region']['href'].split('regions/')[1] == region_id:
+                            id = imgprof['id']
+                            break
+                    else: id = region_id
+                if image:
+                    if id in map:
+                        mappings = map['id']['mappings']
+                        mappings[d['name']] = image['dn']
+                    else:
+                        region = regions.findID(region_id)
+                        dn = region['dn']
+                        mappings = {}
+                        mappings[d['name']] = image['dn']
+                        map[id] = {
+                            'id': id,
+                            'name': region['name'],
+                            'ca': region['ca'],
+                            'rg': region['name'],
+                            'dn': dn,
+                            'mappings': mappings,
+                            'payload': {'name': dn}
+                        }
+                        ids.append(id); dns[dn] = id; count += 1
         return map, ids, dns, count
     
     def sync(self, vra, src, regions, images):
