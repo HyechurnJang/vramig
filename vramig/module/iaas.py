@@ -86,14 +86,18 @@ class FabricCompute(Object):
             dn = s['dn']
             t = self.findDN(dn)
             if t == None:
-                if isDebug(): print('  ! could not find fabric compute dn [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not find fabric compute dn [%s]' % dn)
                 continue
             try: vra.patch('/iaas/api/fabric-computes/' + t['id'], s['payload'])
             except Exception as e:
-                if isDebug(): print('  ! could not set tag to fabric compute [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not set tag to fabric compute [%s]' % dn)
             else:
-                if isDebug(): print('  * set tag to fabric compute [%s]' % dn)
+                print(' *', end='')
+                if isDebug(): print(' set tag to fabric compute [%s]' % dn)
                 completed += 1
+        print('')
         return completed
 
 
@@ -143,19 +147,25 @@ class CloudZone(Object):
                 if t == None: # Create
                     try: self.post('/iaas/api/zones', s['payload'])
                     except Exception as e:
-                        if isDebug(): print('  ! could not create cloud zone [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not create cloud zone [%s]' % dn)
                     else:
-                        if isDebug(): print('  + create cloud zone [%s]' % dn)
+                        print(' +', end='')
+                        if isDebug(): print(' create cloud zone [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/zones/' + t['id'], s['payload'])
                     except:
-                        if isDebug(): print('  ! could not update cloud zone [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not update cloud zone [%s]' % dn)
                     else:
-                        if isDebug(): print('  * update cloud zone [%s]' % dn)
+                        print(' *', end='')
+                        if isDebug(): print(' update cloud zone [%s]' % dn)
                         completed += 1
             else:
-                if isDebug(): print('  ! could not find region of cloud zone [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not find region of cloud zone [%s]' % dn)
+        print('')
         return completed
 
 
@@ -245,13 +255,16 @@ class FabricNetworkvSphere(Object):
             if t:
                 try: vra.patch('/iaas/api/fabric-networks-vsphere/' + t['id'], s['payload'])
                 except Exception as e:
-                    print(str(e))
-                    if isDebug(): print('  ! could not update to fabric network vsphere [%s]' % dn)
+                    print(' !', end='')
+                    if isDebug(): print(' could not update to fabric network vsphere [%s]' % dn)
                 else:
-                    if isDebug(): print('  * update fabric network vsphere [%s]' % dn)
+                    print(' *', end='')
+                    if isDebug(): print(' update fabric network vsphere [%s]' % dn)
                     completed += 1
             else:
-                if isDebug(): print('  ! could not find fabric network vsphere [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not find fabric network vsphere [%s]' % dn)
+        print('')
         return completed
     
 
@@ -296,19 +309,24 @@ class IPRange(Object):
                 if t == None: # Create
                     try: self.post('/iaas/api/network-ip-ranges', s['payload'])
                     except Exception as e:
-                        if isDebug(): print('  ! could not create ip range [%s]' % dn)
-                    else:
-                        if isDebug(): print('  + create ip range [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not create ip range [%s]' % dn)
+                    else:print(' +', end='')
+                        if isDebug(): print(' create ip range [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/network-ip-ranges/' + t['id'], s['payload'])
                     except:
-                        if isDebug(): print('  ! could not update ip range [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not update ip range [%s]' % dn)
                     else:
-                        if isDebug(): print('  * update ip range [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' update ip range [%s]' % dn)
                         completed += 1
             else:
-                if isDebug(): print('  ! could not find network of ip range [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not find network of ip range [%s]' % dn)
+        print('')
         return completed
 
 
@@ -372,7 +390,8 @@ class NetworkProfile(Object):
                     if network:
                         fabricNetworkIds.append(network['id'])
                     else:
-                        if isDebug(): print('  ! could not find network of network profile [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not find network of network profile [%s]' % dn)
                 s['payload']['fabricNetworkIds'] = fabricNetworkIds
                 if s['dom_dn']: s['payload']['isolationNetworkDomainId'] = domains.findDN(s['dom_dn'])['id']
                 if s['exn_dn']: s['payload']['isolationExternalFabricNetworkId'] = networks.findDN(s['exn_dn'])['id']
@@ -380,19 +399,25 @@ class NetworkProfile(Object):
                 if t == None: # Create
                     try: self.post('/iaas/api/network-profiles', s['payload'])
                     except Exception as e:
-                        if isDebug(): print('  ! could not create network profile [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not create network profile [%s]' % dn)
                     else:
-                        if isDebug(): print('  + create network profile [%s]' % dn)
+                        print(' +', end='')
+                        if isDebug(): print(' create network profile [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/network-profiles/' + t['id'], s['payload'])
                     except:
-                        if isDebug(): print('  ! could not update network profile [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not update network profile [%s]' % dn)
                     else:
-                        if isDebug(): print('  * update network profile [%s]' % dn)
+                        print(' *', end='')
+                        if isDebug(): print(' update network profile [%s]' % dn)
                         completed += 1
             else:
-                if isDebug(): print('  ! could not find region of network profile [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not find region of network profile [%s]' % dn)
+        print('')
         return completed
 
 
@@ -498,19 +523,25 @@ class StorageProfile(Object):
                 if t == None: # Create
                     try: vra.post('/provisioning/uerp/provisioning/mgmt/flat-storage-profile', s['payload'])
                     except Exception as e:
-                        if isDebug(): print('  ! could not create storage profile [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not create storage profile [%s]' % dn)
                     else:
-                        if isDebug(): print('  + create storage profile [%s]' % dn)
+                        print(' +', end='')
+                        if isDebug(): print(' create storage profile [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.put('/provisioning/uerp/provisioning/mgmt/flat-storage-profile/' + t['id'], s['payload'])
                     except:
-                        if isDebug(): print('  ! could not update storage profile [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not update storage profile [%s]' % dn)
                     else:
-                        if isDebug(): print('  * update storage profile [%s]' % dn)
+                        print(' *', end='')
+                        if isDebug(): print(' update storage profile [%s]' % dn)
                         completed += 1
             else:
-                if isDebug(): print('  ! could not find region of storage profile [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not find region of storage profile [%s]' % dn)
+        print('')
         return completed
 
 
@@ -588,19 +619,25 @@ class ImageProfile(Object):
                 if t == None: # Create
                     try: vra.post('/iaas/api/image-profiles', s['payload'])
                     except Exception as e:
-                        if isDebug(): print('  ! could not create image profile [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not create image profile [%s]' % dn)
                     else:
-                        if isDebug(): print('  + create image profile [%s]' % dn)
+                        print(' +', end='')
+                        if isDebug(): print(' create image profile [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/image-profiles/' + t['id'], s['payload'])
                     except:
-                        if isDebug(): print('  ! could not update image profile [%s]' % dn)
+                        print(' !', end='')
+                        if isDebug(): print(' could not update image profile [%s]' % dn)
                     else:
-                        if isDebug(): print('  * update image profile [%s]' % dn)
+                        print(' *', end='')
+                        if isDebug(): print(' update image profile [%s]' % dn)
                         completed += 1
             else:
-                if isDebug(): print('  ! could not find region of image profile [%s]' % dn)
+                print(' !', end='')
+                if isDebug(): print(' could not find region of image profile [%s]' % dn)
+        print('')
         return completed
     
     
@@ -647,17 +684,22 @@ class Project(Object):
             if t == None: # Create
                 try: vra.post('/iaas/api/projects', s['payload'])
                 except Exception as e:
-                    if isDebug(): print('  ! could not create project [%s]' % dn)
+                    print(' !', end='')
+                    if isDebug(): print(' could not create project [%s]' % dn)
                 else:
-                    if isDebug(): print('  + create project [%s]' % dn)
+                    print(' +', end='')
+                    if isDebug(): print(' create project [%s]' % dn)
                     completed += 1
             else: # Update
                 try: vra.patch('/iaas/api/projects/' + t['id'], s['payload'])
                 except:
-                    if isDebug(): print('  ! could not update project [%s]' % dn)
+                    print(' !', end='')
+                    if isDebug(): print(' could not update project [%s]' % dn)
                 else:
-                    if isDebug(): print('  * update project [%s]' % dn)
+                    print(' *', end='')
+                    if isDebug(): print(' update project [%s]' % dn)
                     completed += 1
+        print('')
         return completed
 
 
