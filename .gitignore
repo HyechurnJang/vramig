@@ -166,3 +166,5 @@ dmypy.json
 /StorageProfile.tgt.json
 /StorageProfilevSphere.src.json
 /StorageProfilevSphere.tgt.json
+/FlavorProfile.src.json
+/FlavorProfile.tgt.json

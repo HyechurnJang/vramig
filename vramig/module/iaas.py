@@ -311,7 +311,8 @@ class IPRange(Object):
                     except Exception as e:
                         print(' !', end='')
                         if isDebug(): print(' could not create ip range [%s]' % dn)
-                    else:print(' +', end='')
+                    else:
+                        print(' +', end='')
                         if isDebug(): print(' create ip range [%s]' % dn)
                         completed += 1
                 else: # Update
@@ -320,7 +321,7 @@ class IPRange(Object):
                         print(' !', end='')
                         if isDebug(): print(' could not update ip range [%s]' % dn)
                     else:
-                        print(' !', end='')
+                        print(' *', end='')
                         if isDebug(): print(' update ip range [%s]' % dn)
                         completed += 1
             else:
@@ -544,6 +545,68 @@ class StorageProfile(Object):
         print('')
         return completed
 
+
+@register_object
+class FlavorProfile(Object):
+    
+    RELATIONS = [CloudRegion]
+    LOAD_URL = '/iaas/api/flavor-profiles?$limit=10000'
+    
+    def __init__(self): Object.__init__(self)
+    
+    def parse(self, data, regions):
+        map, ids, dns, count = {}, [], {}, 0
+        for d in data['content']:
+            id = d['id']
+            name = d['name']
+            region = regions.findID(d['_links']['region']['href'].split('regions/')[1])
+            ca = region['ca']
+            rg = region['name']
+            dn = ca + '/' + rg
+            # Payload ##############################
+            flavor_mapping = d['flavorMappings']['mapping'] if 'flavorMappings' in d and 'mapping' in d['flavorMappings'] else {}
+            payload = {'name': name, 'flavorMapping': flavor_mapping}
+            if 'description' in d: payload['description'] = d['description']
+            # Payload ##############################
+            map[id] = {
+                'id': id, 'name': name, 'ca': ca, 'rg': rg, 'dn': dn,
+                'payload': payload
+            }
+            ids.append(id); dns[dn] = id; count += 1
+        return map, ids, dns, count
+
+    def sync(self, vra, src, regions):
+        completed = 0
+        for s in src.getSortedMaps():
+            dn = s['dn']
+            region = regions.findDN(s['dn'])
+            if region:
+                s['payload']['regionId'] = region['id']
+                t = self.findDN(dn)
+                if t == None: # Create
+                    try: vra.post('/iaas/api/flavor-profiles', s['payload'])
+                    except Exception as e:
+                        print(' !', end='')
+                        if isDebug(): print(' could not create flavor profile [%s]' % dn)
+                    else:
+                        print(' +', end='')
+                        if isDebug(): print(' create flavor profile [%s]' % dn)
+                        completed += 1
+                else: # Update
+                    try: vra.patch('/iaas/api/flavor-profiles/' + t['id'], s['payload'])
+                    except:
+                        print(' !', end='')
+                        if isDebug(): print(' could not update flavor profile [%s]' % dn)
+                    else:
+                        print(' *', end='')
+                        if isDebug(): print(' update flavor profile [%s]' % dn)
+                        completed += 1
+            else:
+                print(' !', end='')
+                if isDebug(): print(' could not find region of flavor profile [%s]' % dn)
+        print('')
+        return completed
+    
 
 @register_object
 class FabricImage(Object):
