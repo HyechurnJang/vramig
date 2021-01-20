@@ -141,7 +141,7 @@ class Object(dict):
     def findID(self, id):
         try: return self['map'][id]
         except:
-            if isDebug(): print('  ! could not find data with id(%s)' % id)
+            if isDebug(): print(' ! could not find data with id(%s)' % id)
             return None
     
     def findDN(self, dn):
@@ -149,7 +149,7 @@ class Object(dict):
             id = self['dns'][dn]
             return self['map'][id]
         except:
-            if isDebug(): print('  ! could not find data with dn(%s)' % dn)
+            if isDebug(): print(' ! could not find data with dn(%s)' % dn)
         return None
     
     def getMaps(self):
