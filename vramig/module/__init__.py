@@ -25,7 +25,7 @@ def execute(args, conf):
         for obj in REGISTERED_OBJECTS.keys(): print(obj)
         exit(0)
     elif args.command == 'get':
-        with open('data.src.json', 'w') as fd: fd.write(jps(VRA(conf).get(args.url)))
+        with open('data.src.json', 'w') as fd: fd.write(jps(VRA(conf, 'src').get(args.url)))
         exit(0)
     
     if args.all_objects == False and args.objects == None:
