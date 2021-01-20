@@ -146,7 +146,7 @@ class CloudZone(Object):
                 s['payload']['regionId'] = region['id']
                 t = self.findDN(dn)
                 if t == None: # Create
-                    try: self.post('/iaas/api/zones', s['payload'])
+                    try: vra.post('/iaas/api/zones', s['payload'])
                     except Exception as e:
                         print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create cloud zone [%s]' % dn)
@@ -288,6 +288,7 @@ class IPRange(Object):
             dn = ca + '/' + net + '/' + name
             # Payload ##############################
             payload = {'name': name}
+            if 'description' in d: pyaload['description'] = d['description']
             if 'ipVersion' in d: payload['ipVersion'] = d['ipVersion']
             if 'startIPAddress' in d: payload['startIPAddress'] = d['startIPAddress']
             if 'endIPAddress' in d: payload['endIPAddress'] = d['endIPAddress']
@@ -308,7 +309,7 @@ class IPRange(Object):
                 s['payload']['fabricNetworkId'] = network['id']
                 t = self.findDN(dn)
                 if t == None: # Create
-                    try: self.post('/iaas/api/network-ip-ranges', s['payload'])
+                    try: vra.post('/iaas/api/network-ip-ranges', s['payload'])
                     except Exception as e:
                         print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create ip range [%s]' % dn)
@@ -357,7 +358,8 @@ class NetworkProfile(Object):
             net_dns = []
             if 'fabric-networks' in d['_links']:
                 for net_id in d['_links']['fabric-networks']['hrefs']:
-                    net_dns.append(networks.findID(net_id.split('fabric-networks/')[1])['dn'])
+                    try: net_dns.append(networks.findID(net_id.split('fabric-networks/')[1])['dn'])
+                    except: pass
             exn_dn = None
             if 'isolated-external-fabric-networks' in d['_links']:
                 exn_dn = networks.findID(d['_links']['isolated-external-fabric-networks']['href'].split('fabric-networks/')[1])['dn']
@@ -399,7 +401,7 @@ class NetworkProfile(Object):
                 if s['exn_dn']: s['payload']['isolationExternalFabricNetworkId'] = networks.findDN(s['exn_dn'])['id']
                 t = self.findDN(dn)
                 if t == None: # Create
-                    try: self.post('/iaas/api/network-profiles', s['payload'])
+                    try: vra.post('/iaas/api/network-profiles', s['payload'])
                     except Exception as e:
                         print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create network profile [%s]' % dn)
@@ -483,8 +485,9 @@ class StorageProfile(Object):
     def parse(self, data, accounts, regions, vsprofs, datastores):
         map, ids, dns, count = {}, [], {}, 0
         for sp in data['documents'].values():
-            ca = accounts.findID(sp['endpointLinks'][0].split('endpoints/')[1])
-            rg = sp['regionId']
+            region = regions.findID(sp['endpointLinks'][0].split('endpoints/')[1])
+            ca = region['ca']
+            rg = region['name']
             rg_dn = ca + '/' + rg
             for d in sp['storageItems']:
                 if 'storageDescriptionLink' not in d: continue
@@ -516,6 +519,8 @@ class StorageProfile(Object):
             dn = s['dn']
             region = regions.findDN(s['rg_dn'])
             if region:
+                if self.ver in [80, 81]: s['payload']['provisioningRegionLink'] = '/provisioning/resuorces/provisioning-regions/' + region['id']
+                else: s['payload']['provisioningRegionLink'] = '/provisioning/resources/' + region['id']
                 s['payload']['provisioningRegionLink'] = '/provisioning/resources/' + region['id']
                 s['payload']['storageDescriptionLink'] = '/resources/storage-descriptions/' + datastores.findDN(s['stg_dn'])['id']
                 if s['tags']:
@@ -566,7 +571,7 @@ class FlavorProfile(Object):
             dn = ca + '/' + rg
             # Payload ##############################
             flavor_mapping = d['flavorMappings']['mapping'] if 'flavorMappings' in d and 'mapping' in d['flavorMappings'] else {}
-            payload = {'name': name, 'flavorMapping': flavor_mapping}
+            payload = {'name': dn, 'flavorMapping': flavor_mapping}
             if 'description' in d: payload['description'] = d['description']
             # Payload ##############################
             map[id] = {
@@ -656,7 +661,7 @@ class ImageProfile(Object):
             mappings = {}
             for key, image in d['imageMappings']['mapping'].items():
                 mappings[key] = images.findID(image['id'])['dn']
-            payload = {'name': name}
+            payload = {'name': dn}
             if 'description' in d: payload['description'] = d['description']
             # Payload ##############################
             map[id] = {
@@ -743,7 +748,12 @@ class Project(Object):
         completed = 0
         for s in src.getSortedMaps():
             dn = s['dn']
-            for z in s['payload']['zoneAssignmentConfigurations']: z['zoneId'] = zones.findDN(z['zoneId'])['id']
+            del_zones = []
+            for z in s['payload']['zoneAssignmentConfigurations']:
+                try: z['zoneId'] = zones.findDN(z['zoneId'])['id']
+                except: del_zones.append(z)
+            for del_zone in del_zones:
+              s['payload']['zoneAssignmentConfigurations'].remove(z)
             t = self.findDN(dn)
             if t == None: # Create
                 try: vra.post('/iaas/api/projects', s['payload'])
