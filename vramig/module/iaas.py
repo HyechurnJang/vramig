@@ -10,6 +10,7 @@ Created on 2021. 1. 8..
 @author: Hye-Churn Jang, CMBU Specialist in Korea, VMware [jangh@vmware.com]
 '''
 
+import sys
 import json
 from .common import Object, register_object, isDebug, jps, jpp
    
@@ -86,15 +87,15 @@ class FabricCompute(Object):
             dn = s['dn']
             t = self.findDN(dn)
             if t == None:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find fabric compute dn [%s]' % dn)
                 continue
             try: vra.patch('/iaas/api/fabric-computes/' + t['id'], s['payload'])
             except Exception as e:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not set tag to fabric compute [%s]' % dn)
             else:
-                print(' *', end='')
+                print(' *', end=''); sys.stdout.flush()
                 if isDebug(): print(' set tag to fabric compute [%s]' % dn)
                 completed += 1
         print('')
@@ -147,23 +148,23 @@ class CloudZone(Object):
                 if t == None: # Create
                     try: self.post('/iaas/api/zones', s['payload'])
                     except Exception as e:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create cloud zone [%s]' % dn)
                     else:
-                        print(' +', end='')
+                        print(' +', end=''); sys.stdout.flush()
                         if isDebug(): print(' create cloud zone [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/zones/' + t['id'], s['payload'])
                     except:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not update cloud zone [%s]' % dn)
                     else:
-                        print(' *', end='')
+                        print(' *', end=''); sys.stdout.flush()
                         if isDebug(): print(' update cloud zone [%s]' % dn)
                         completed += 1
             else:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find region of cloud zone [%s]' % dn)
         print('')
         return completed
@@ -255,14 +256,14 @@ class FabricNetworkvSphere(Object):
             if t:
                 try: vra.patch('/iaas/api/fabric-networks-vsphere/' + t['id'], s['payload'])
                 except Exception as e:
-                    print(' !', end='')
+                    print(' !', end=''); sys.stdout.flush()
                     if isDebug(): print(' could not update to fabric network vsphere [%s]' % dn)
                 else:
-                    print(' *', end='')
+                    print(' *', end=''); sys.stdout.flush()
                     if isDebug(): print(' update fabric network vsphere [%s]' % dn)
                     completed += 1
             else:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find fabric network vsphere [%s]' % dn)
         print('')
         return completed
@@ -309,23 +310,23 @@ class IPRange(Object):
                 if t == None: # Create
                     try: self.post('/iaas/api/network-ip-ranges', s['payload'])
                     except Exception as e:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create ip range [%s]' % dn)
                     else:
-                        print(' +', end='')
+                        print(' +', end=''); sys.stdout.flush()
                         if isDebug(): print(' create ip range [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/network-ip-ranges/' + t['id'], s['payload'])
                     except:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not update ip range [%s]' % dn)
                     else:
-                        print(' *', end='')
+                        print(' *', end=''); sys.stdout.flush()
                         if isDebug(): print(' update ip range [%s]' % dn)
                         completed += 1
             else:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find network of ip range [%s]' % dn)
         print('')
         return completed
@@ -391,7 +392,7 @@ class NetworkProfile(Object):
                     if network:
                         fabricNetworkIds.append(network['id'])
                     else:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not find network of network profile [%s]' % dn)
                 s['payload']['fabricNetworkIds'] = fabricNetworkIds
                 if s['dom_dn']: s['payload']['isolationNetworkDomainId'] = domains.findDN(s['dom_dn'])['id']
@@ -400,23 +401,23 @@ class NetworkProfile(Object):
                 if t == None: # Create
                     try: self.post('/iaas/api/network-profiles', s['payload'])
                     except Exception as e:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create network profile [%s]' % dn)
                     else:
-                        print(' +', end='')
+                        print(' +', end=''); sys.stdout.flush()
                         if isDebug(): print(' create network profile [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/network-profiles/' + t['id'], s['payload'])
                     except:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not update network profile [%s]' % dn)
                     else:
-                        print(' *', end='')
+                        print(' *', end=''); sys.stdout.flush()
                         if isDebug(): print(' update network profile [%s]' % dn)
                         completed += 1
             else:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find region of network profile [%s]' % dn)
         print('')
         return completed
@@ -524,23 +525,23 @@ class StorageProfile(Object):
                 if t == None: # Create
                     try: vra.post('/provisioning/uerp/provisioning/mgmt/flat-storage-profile', s['payload'])
                     except Exception as e:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create storage profile [%s]' % dn)
                     else:
-                        print(' +', end='')
+                        print(' +', end=''); sys.stdout.flush()
                         if isDebug(): print(' create storage profile [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.put('/provisioning/uerp/provisioning/mgmt/flat-storage-profile/' + t['id'], s['payload'])
                     except:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not update storage profile [%s]' % dn)
                     else:
-                        print(' *', end='')
+                        print(' *', end=''); sys.stdout.flush()
                         if isDebug(): print(' update storage profile [%s]' % dn)
                         completed += 1
             else:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find region of storage profile [%s]' % dn)
         print('')
         return completed
@@ -586,23 +587,23 @@ class FlavorProfile(Object):
                 if t == None: # Create
                     try: vra.post('/iaas/api/flavor-profiles', s['payload'])
                     except Exception as e:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create flavor profile [%s]' % dn)
                     else:
-                        print(' +', end='')
+                        print(' +', end=''); sys.stdout.flush()
                         if isDebug(): print(' create flavor profile [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/flavor-profiles/' + t['id'], s['payload'])
                     except:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not update flavor profile [%s]' % dn)
                     else:
-                        print(' *', end='')
+                        print(' *', end=''); sys.stdout.flush()
                         if isDebug(): print(' update flavor profile [%s]' % dn)
                         completed += 1
             else:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find region of flavor profile [%s]' % dn)
         print('')
         return completed
@@ -682,23 +683,23 @@ class ImageProfile(Object):
                 if t == None: # Create
                     try: vra.post('/iaas/api/image-profiles', s['payload'])
                     except Exception as e:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not create image profile [%s]' % dn)
                     else:
-                        print(' +', end='')
+                        print(' +', end=''); sys.stdout.flush()
                         if isDebug(): print(' create image profile [%s]' % dn)
                         completed += 1
                 else: # Update
                     try: vra.patch('/iaas/api/image-profiles/' + t['id'], s['payload'])
                     except:
-                        print(' !', end='')
+                        print(' !', end=''); sys.stdout.flush()
                         if isDebug(): print(' could not update image profile [%s]' % dn)
                     else:
-                        print(' *', end='')
+                        print(' *', end=''); sys.stdout.flush()
                         if isDebug(): print(' update image profile [%s]' % dn)
                         completed += 1
             else:
-                print(' !', end='')
+                print(' !', end=''); sys.stdout.flush()
                 if isDebug(): print(' could not find region of image profile [%s]' % dn)
         print('')
         return completed
@@ -747,19 +748,19 @@ class Project(Object):
             if t == None: # Create
                 try: vra.post('/iaas/api/projects', s['payload'])
                 except Exception as e:
-                    print(' !', end='')
+                    print(' !', end=''); sys.stdout.flush()
                     if isDebug(): print(' could not create project [%s]' % dn)
                 else:
-                    print(' +', end='')
+                    print(' +', end=''); sys.stdout.flush()
                     if isDebug(): print(' create project [%s]' % dn)
                     completed += 1
             else: # Update
                 try: vra.patch('/iaas/api/projects/' + t['id'], s['payload'])
                 except:
-                    print(' !', end='')
+                    print(' !', end=''); sys.stdout.flush()
                     if isDebug(): print(' could not update project [%s]' % dn)
                 else:
-                    print(' *', end='')
+                    print(' *', end=''); sys.stdout.flush()
                     if isDebug(): print(' update project [%s]' % dn)
                     completed += 1
         print('')
