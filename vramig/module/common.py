@@ -115,6 +115,7 @@ class Object(dict):
         return o
     
     def loadData(self, vra):
+        self.vra = vra
         self.role = vra.role
         self.ver = vra.ver
         data = vra.get(self.__class__.LOAD_URL)
