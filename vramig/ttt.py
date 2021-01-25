@@ -70,7 +70,6 @@ dep = vra.post('/relocation/onboarding/deployment', dep_payload)
 depLink = dep['documentSelfLink']
  
 # Create Resource
-resources = []
 for vm in vms:
     computes = vra.get("/provisioning/uerp/resources/compute?expand&$filter=((type eq 'VM_GUEST') and (name eq '%s') and (lifecycleState eq 'READY'))" % vm)
     computeLink = computes['documentLinks'][0]
