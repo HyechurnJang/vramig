@@ -168,3 +168,7 @@ dmypy.json
 /StorageProfilevSphere.tgt.json
 /FlavorProfile.src.json
 /FlavorProfile.tgt.json
+/Blueprint.src.json
+/Blueprint.tgt.json
+/Deployment.src.json
+/Deployment.tgt.json

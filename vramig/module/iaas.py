@@ -288,7 +288,7 @@ class IPRange(Object):
             dn = ca + '/' + net + '/' + name
             # Payload ##############################
             payload = {'name': name}
-            if 'description' in d: pyaload['description'] = d['description']
+            if 'description' in d: payload['description'] = d['description']
             if 'ipVersion' in d: payload['ipVersion'] = d['ipVersion']
             if 'startIPAddress' in d: payload['startIPAddress'] = d['startIPAddress']
             if 'endIPAddress' in d: payload['endIPAddress'] = d['endIPAddress']
@@ -485,8 +485,8 @@ class StorageProfile(Object):
     def parse(self, data, accounts, regions, vsprofs, datastores):
         map, ids, dns, count = {}, [], {}, 0
         for sp in data['documents'].values():
-            region = regions.findID(sp['endpointLinks'][0].split('endpoints/')[1])
-            ca = region['ca']
+            ca = accounts.findID(sp['endpointLinks'][0].split('endpoints/')[1])
+            region = regions.findDN(ca + '/' + sp['regionId'])
             rg = region['name']
             rg_dn = ca + '/' + rg
             for d in sp['storageItems']:
@@ -642,18 +642,17 @@ class FabricImage(Object):
 class ImageProfile(Object):
     
     RELATIONS = [CloudRegion, FabricImage]
-    LOAD_URL = '/profisioning/uerp/provisioning/mgmt/image-names?view=list'
+    LOAD_URL = '/provisioning/uerp/provisioning/mgmt/image-names?view=list'
     
     def __init__(self): Object.__init__(self)
     
     def parse(self, data, regions, images):
         map, ids, dns, count = {}, [], {}, 0
-        if self.ver in [80, 81]: self.delimeter = 'provisioning-regions/'
-        else: self.delimeter = 'resources/'
+        self.delimeter = 'provisioning-regions/'
         if self.role == 'tgt':
             imgprofs = self.get('/iaas/api/image-profiles?limit=10000')['content']
         for d in data:
-            for id, mig in d['imageMapping'].items():
+            for id, img in d['imageMapping'].items():
                 region_id = id.split(self.delimeter)[1]
                 img_id = img['imageLink'].split('images/')[1]
                 image = images.findID(img_id)
@@ -665,7 +664,7 @@ class ImageProfile(Object):
                     else: id = region_id
                 if image:
                     if id in map:
-                        mappings = map['id']['mappings']
+                        mappings = map[id]['mappings']
                         mappings[d['name']] = image['dn']
                     else:
                         region = regions.findID(region_id)

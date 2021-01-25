@@ -3,6 +3,7 @@ import json
 import argparse
 from .common import VRA, jps, jpp, REGISTERED_OBJECTS, setDebugMode
 from .iaas import *
+from .deployment import *
 
 def execute(args, conf):
     parser = argparse.ArgumentParser(description='Process some integers.')
