@@ -17,7 +17,7 @@ vra = VRASession('vra.vmkloud.com', 'jangh', 'David*#8090')
 
 ns = 'test'
 vms = ['test2', 'test3']
-bp = '[DEMO] Dynamic VM'
+bp = '[TEST] Custom.Script'
 name = 'ob-%s' % ns
 description = 'onboard test %s' % ns
 
