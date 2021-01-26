@@ -26,13 +26,14 @@ for each(var vm in vra.getUerp("/resources/compute?expand&$filter=((lifecycleSta
         var networkInterfaceLink = netif.documentSelfLink;
         var addressLinks = [];
         var addressTitle = "";
-        var subnetTitleLink = null;
-        var subnetTitleName = null;
+        var subnetTitleLink = "";
+        var subnetTitleName = "";
         if (nic.ipConfig != null) {
             for each(var ipObj in nic.ipConfig.ipAddress) {
                 var ipAddress = ipObj.ipAddress;
                 if (ipAddress.indexOf(":") > -1) { continue; } // ipv6 not support
                 var ipAddressNum = ipAddr.ip2num(ipAddress);
+                if (addressTitle == "") { addressTitle = ipAddress; }
                 for each(var range in ranges) {
                     if (ipAddressNum >= range.ipStt && ipAddressNum <= range.ipEnd) {
                         var subnetLink = range.subnetLink;
@@ -54,9 +55,8 @@ for each(var vm in vra.getUerp("/resources/compute?expand&$filter=((lifecycleSta
                                     "subnetRangeLink": subnetRangeLink,
                                     "connectedResourceLink": networkInterfaceLink
                                 }).documentSelfLink);
-                                if (addressTitle == "") { addressTitle = ipAddress; }
-                                if (subnetTitleLink == null) { subnetTitleLink = subnetLink; }
-                                if (subnetTitleName == null) { subnetTitleName = subnet.name; }
+                                if (subnetTitleLink == "") { subnetTitleLink = subnetLink; }
+                                if (subnetTitleName == "") { subnetTitleName = subnet.name; }
                             } catch (e) { System.log(e); }
                         } else if (checkIp.totalCount == 1) {
                             checkIp = checkIp.documents[checkIp.documentLinks[0]];
@@ -65,9 +65,8 @@ for each(var vm in vra.getUerp("/resources/compute?expand&$filter=((lifecycleSta
                                 checkIp.connectedResourceLink = networkInterfaceLink;
                                 try {
                                     addressLinks.push(vra.patch("/provisioning/uerp" + checkIp.documentSelfLink, checkIp).documentSelfLink);
-                                    if (addressTitle == "") { addressTitle = ipAddress; }
-                                    if (subnetTitleLink == null) { subnetTitleLink = subnetLink; }
-                                    if (subnetTitleName == null) { subnetTitleName = subnet.name; }
+                                    if (subnetTitleLink == "") { subnetTitleLink = subnetLink; }
+                                    if (subnetTitleName == "") { subnetTitleName = subnet.name; }
                                 } catch (e) { System.log(e); }
                             } else {
                                 System.log("ip[" + ipAddress + "] is already allocated");
@@ -78,10 +77,9 @@ for each(var vm in vra.getUerp("/resources/compute?expand&$filter=((lifecycleSta
                 }
             }
         }
-
-        if (subnetTitleLink != null) { netif.subnetLink = subnetTitleLink; }
         if (netif.name.indexOf("Network adapter") > -1) { netif.deviceIndex = Number(netif.name.split("adapter ")[1]) - 1; }
-        if (subnetTitleName != null) { netif.name = subnetTitleName; }
+        if (subnetTitleName != "") { netif.name = subnetTitleName; }
+        netif.subnetLink = subnetTitleLink;
         netif.addressLinks = addressLinks;
         netif.address = addressTitle;
         vra.put("/provisioning/uerp" + netif.documentSelfLink, netif);
